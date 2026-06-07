@@ -3423,9 +3423,12 @@
           <div style="font-size:13px;font-weight:600;color:var(--text);">🧠 Personal Assistant</div>
           <div id="pa-date-line" style="font-size:10px;color:var(--text3);font-family:'DM Mono',monospace;margin-top:2px;"></div>
           <div id="pa-memory-status" style="font-size:9px;color:#7c3aed;font-family:'DM Mono',monospace;margin-top:2px;opacity:0.85;">🧠 Memory initializing…</div>
+          <div id="pa-sync-status" style="font-size:9px;color:var(--text3);font-family:'DM Mono',monospace;margin-top:1px;">↻ Initializing…</div>
         </div>
-        <div style="display:flex;gap:5px;">
-          <button onclick="showPAMemoryPanel()" class="btn btn-ghost" style="font-size:10px;padding:4px 9px;color:#7c3aed;border-color:rgba(124,58,237,0.3);" title="Show what the assistant has learned">📊</button>
+        <div style="display:flex;gap:5px;align-items:center;">
+          <div id="pa-health-dot" title="System health" style="width:8px;height:8px;border-radius:50%;background:#6b7280;flex-shrink:0;cursor:pointer;" onclick="showHealthPanel()"></div>
+          <button onclick="showPAMemoryPanel()" class="btn btn-ghost" style="font-size:10px;padding:4px 9px;color:#7c3aed;border-color:rgba(124,58,237,0.3);" title="Show learned profile">📊</button>
+          <button onclick="toggleCustomInstructions()" class="btn btn-ghost" style="font-size:10px;padding:4px 9px;" title="Custom instructions">⚙️</button>
           <button onclick="generateDailyBriefing()" id="pa-briefing-btn" class="btn btn-primary" style="font-size:11px;padding:5px 12px;gap:4px;background:linear-gradient(135deg,#7c3aed,#e10600);">☀️ Briefing</button>
         </div>
       </div>
@@ -3433,16 +3436,17 @@
       <div id="pa-focus-strip" style="display:flex;gap:6px;flex-wrap:wrap;"></div>
     </div>
 
-    <!-- Quick action buttons + connections toggle -->
-    <div style="padding:8px 14px;border-bottom:1px solid var(--border);display:flex;gap:5px;flex-wrap:wrap;flex-shrink:0;background:var(--surface);">
-      <button class="claude-quick-btn" onclick="paQuick('Plan my day — give me a structured schedule and priorities for today based on all tasks, team workload, and deadlines.')" style="font-size:10px;">📅 Plan Day</button>
-      <button class="claude-quick-btn" onclick="paQuick('What needs my immediate attention right now? Focus on critical, overdue, or high-priority items.')" style="font-size:10px;">🎯 Focus</button>
-      <button class="claude-quick-btn" onclick="paQuick('Give me a full team health check — who is overloaded, who has capacity, any bottlenecks, and recommendations.')" style="font-size:10px;">⚖️ Team Check</button>
-      <button class="claude-quick-btn" onclick="paQuick('Generate an end-of-day summary — what was completed today, what is pending, and what to prioritize tomorrow.')" style="font-size:10px;">🌙 EOD</button>
-      <button class="claude-quick-btn" onclick="paQuick('Show me productivity insights — trends in task completion, overdue patterns, and recommendations for the team.')" style="font-size:10px;">📈 Insights</button>
-      <button class="claude-quick-btn" onclick="paQuick('Help me draft a brief status update for the team based on today\'s activity.')" style="font-size:10px;">📢 Status</button>
-      <button class="claude-quick-btn" onclick="toggleConnectionsDrawer()" id="pa-conn-toggle" style="font-size:10px;border-color:rgba(59,130,246,0.4);color:#3b82f6;">⚡ Connections</button>
+    <!-- Custom instructions (hidden by default, toggled) -->
+    <div id="pa-custom-instr-wrap" style="display:none;padding:8px 14px 10px;border-bottom:1px solid var(--border);flex-shrink:0;background:rgba(124,58,237,0.05);">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:5px;">
+        <div style="font-size:10px;font-weight:600;color:#7c3aed;">⚙️ Custom Instructions</div>
+        <div id="pa-improve-badge" style="font-size:9px;color:var(--text3);font-family:'DM Mono',monospace;"></div>
+      </div>
+      <textarea id="pa-custom-instr" placeholder="e.g. Always respond in bullet points. Prioritise safety tasks. Keep answers under 150 words." rows="2" oninput="saveCustomInstructions()" style="width:100%;background:var(--surface2);border:1px solid rgba(124,58,237,0.3);border-radius:6px;padding:6px 8px;font-size:11px;color:var(--text);font-family:'DM Sans',sans-serif;resize:vertical;box-sizing:border-box;outline:none;"></textarea>
     </div>
+
+    <!-- Dynamic quick action buttons (rendered by JS) -->
+    <div id="pa-quick-actions-bar" style="padding:8px 14px;border-bottom:1px solid var(--border);display:flex;gap:5px;flex-wrap:wrap;flex-shrink:0;background:var(--surface);"></div>
 
     <!-- Connections drawer (collapsed by default) -->
     <div id="pa-connections-drawer" style="display:none;flex-direction:column;border-bottom:1px solid var(--border);background:rgba(14,15,22,0.6);flex-shrink:0;max-height:260px;overflow-y:auto;">
@@ -8761,15 +8765,20 @@ When you need to fetch live data or create content, emit ONE of these action blo
 \`\`\`
 Only emit actions when the user asks you to fetch, search, or draft. Otherwise, use the cached data already in context.
 
+━━━ SELF-IMPROVEMENT LAYER ━━━
+Feedback-derived style: ${getDerivedStyle()} · ${paPreferences.improvementCount} improvements applied · ${paPreferences.feedbackLog.filter(f=>f.rating>0).length} positive / ${paPreferences.feedbackLog.filter(f=>f.rating<0).length} negative ratings
+${paPreferences.customInstructions ? `Admin custom instructions (MUST follow): ${paPreferences.customInstructions}` : ''}${getAutoImprovementsText()}
+
 ━━━ HOW YOU OPERATE ━━━
 - Be direct, specific, and actionable. No fluff.
-- Use ALL the context above — cross-reference tasks, notes, chat history, and files.
+- Use ALL the context above — cross-reference tasks, notes, chat history, files, and external service data.
 - Proactively surface risks: overdue items, overloaded members, upcoming deadlines, stale announcements.
 - When you spot recurring patterns (same tasks, same questions, same problems), call them out explicitly.
 - For daily briefing: tight command summary — top 3 priorities, team risks, one recommendation.
 - For day planning: realistic, time-aware schedule using actual task data.
 - For end-of-day: what was done, what is open, what to tackle tomorrow.
-- Keep responses concise and high-signal. The admin is busy.
+- Match the response style to the feedback-derived preference above.
+- If custom instructions exist, they override everything else.
 - USE the learned profile below — reference what you've noticed, anticipate needs, personalise every response.
 
 ${getLearnedContext()}`;
@@ -8783,14 +8792,28 @@ function initPATab() {
   }
   renderPAFocusStrip();
   updatePAMemoryStatus();
+  updateSyncStatusLabel();
+  updateHealthDot();
+  renderDynamicQuickActions();
   renderConnectionsList();
-  // Silently refresh connected services in the background
-  const active = Object.keys(paConnections).filter(k => paConnections[k].enabled);
-  const stale = active.filter(k => {
-    const ls = paConnections[k].lastSync;
-    return !ls || (Date.now() - new Date(ls).getTime()) > 10 * 60 * 1000; // 10 min
+  // Restore custom instructions
+  const ta = document.getElementById('pa-custom-instr');
+  if (ta && paPreferences.customInstructions) ta.value = paPreferences.customInstructions;
+  updateImprovementBadge();
+  // Silently refresh any stale connected services
+  const stale = Object.keys(paConnections).filter(k => {
+    const c = paConnections[k];
+    if (!c.enabled || isCircuitOpen(k)) return false;
+    const interval = PA_SYNC_INTERVALS[k] || 15 * 60 * 1000;
+    return !c.lastSync || (Date.now() - new Date(c.lastSync).getTime()) > interval;
   });
-  if (stale.length) Promise.allSettled(stale.map(k => syncService(k))).then(() => renderConnectionsList());
+  if (stale.length) {
+    Promise.allSettled(stale.map(k => syncService(k).then(() => {
+      recordCircuitSuccess(k); paHealthStatus[k] = 'ok';
+    }).catch(() => {
+      recordCircuitFailure(k); paHealthStatus[k] = 'error';
+    }))).then(() => { renderConnectionsList(); updateHealthDot(); updateSyncStatusLabel(); });
+  }
 }
 
 function renderPAFocusStrip() {
@@ -8808,13 +8831,29 @@ function renderPAFocusStrip() {
   ).join('');
 }
 
+let paMsgCounter = 0;
+
 function appendPAMessage(role, content) {
   const feed = document.getElementById('pa-messages');
   if (!feed) return null;
   const msg = document.createElement('div');
+  const msgId = 'pamsg-' + (++paMsgCounter);
+  msg.id = msgId;
   msg.className = 'claude-msg ' + (role === 'user' ? 'user' : role === 'thinking' ? 'thinking' : 'assistant');
   if (role === 'assistant') msg.style.cssText = 'background:linear-gradient(135deg,rgba(124,58,237,0.08),rgba(14,15,22,0));border-color:rgba(124,58,237,0.2);';
   msg.innerHTML = role === 'thinking' ? content : formatClaudeText(content);
+  // Add feedback row to assistant (non-thinking, non-error) messages
+  if (role === 'assistant') {
+    const fb = document.createElement('div');
+    fb.style.cssText = 'display:flex;gap:4px;margin-top:6px;opacity:0.5;transition:opacity 0.2s;';
+    fb.onmouseenter = () => fb.style.opacity = '1';
+    fb.onmouseleave = () => { if (!fb.dataset.rated) fb.style.opacity = '0.5'; };
+    fb.innerHTML = `
+      <button onclick="recordFeedback('${msgId}',1,this)" title="Helpful" style="background:none;border:1px solid var(--border);border-radius:12px;padding:1px 7px;font-size:10px;cursor:pointer;color:var(--text3);">👍</button>
+      <button onclick="recordFeedback('${msgId}',-1,this)" title="Not helpful" style="background:none;border:1px solid var(--border);border-radius:12px;padding:1px 7px;font-size:10px;cursor:pointer;color:var(--text3);">👎</button>
+      <span id="fb-label-${msgId}" style="font-size:9px;color:var(--text3);font-family:'DM Mono',monospace;align-self:center;"></span>`;
+    msg.appendChild(fb);
+  }
   feed.appendChild(msg);
   feed.scrollTop = feed.scrollHeight;
   return msg;
@@ -8895,6 +8934,18 @@ async function sendToPA(overrideText) {
 
     paConversation.push({ role:'assistant', content:fullText });
 
+    // Attach feedback buttons to the streamed message
+    if (streamMsg) {
+      const msgId = 'pamsg-' + (++paMsgCounter);
+      streamMsg.id = msgId;
+      const fb = document.createElement('div');
+      fb.style.cssText = 'display:flex;gap:4px;margin-top:6px;opacity:0.5;transition:opacity 0.2s;';
+      fb.onmouseenter = () => fb.style.opacity = '1';
+      fb.onmouseleave = () => { if (!fb.dataset.rated) fb.style.opacity = '0.5'; };
+      fb.innerHTML = `<button onclick="recordFeedback('${msgId}',1,this)" title="Helpful" style="background:none;border:1px solid var(--border);border-radius:12px;padding:1px 7px;font-size:10px;cursor:pointer;color:var(--text3);">👍</button><button onclick="recordFeedback('${msgId}',-1,this)" title="Not helpful" style="background:none;border:1px solid var(--border);border-radius:12px;padding:1px 7px;font-size:10px;cursor:pointer;color:var(--text3);">👎</button><span id="fb-label-${msgId}" style="font-size:9px;color:var(--text3);font-family:'DM Mono',monospace;align-self:center;"></span>`;
+      streamMsg.appendChild(fb);
+    }
+
     // Execute any pa-action blocks Claude emitted
     const paActions = fullText.match(/```pa-action\s*([\s\S]*?)```/g) || [];
     for (const block of paActions) {
@@ -8904,6 +8955,12 @@ async function sendToPA(overrideText) {
         const result = await executePAAction(action);
         if (result) appendPAMessage('system-action', result);
       } catch(e) {}
+    }
+
+    // Trigger self-analysis every 10 assistant turns
+    const assistantTurns = paConversation.filter(m => m.role === 'assistant').length;
+    if (assistantTurns > 0 && assistantTurns % 10 === 0) {
+      setTimeout(() => triggerSelfAnalysis(), 3000);
     }
 
   } catch(err) {
@@ -8965,6 +9022,7 @@ function loadPAMemory() {
   } catch(e) {}
   if (paMemory.commandLog.length > 0) analyzePatterns();
   loadPAConnections();
+  loadPAPreferences();
 }
 
 function savePAMemory() {
@@ -9242,12 +9300,393 @@ function showPAMemoryPanel() {
   appendPAMessage('assistant', out);
 }
 
-// Continuous monitoring interval — re-analyze every 5 min, refresh focus strip
-setInterval(() => {
+// ─────────────────────────────────────────────────────────────────────────────
+// ROBUSTNESS — retry logic, circuit breaker, health monitoring
+// ─────────────────────────────────────────────────────────────────────────────
+
+function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
+
+async function fetchWithRetry(url, options, retries = 3) {
+  let lastErr;
+  for (let i = 0; i < retries; i++) {
+    try {
+      const res = await fetch(url, options);
+      if (res.status === 429 || res.status === 503) {
+        await sleep(1000 * Math.pow(2, i));
+        continue;
+      }
+      return res;
+    } catch(e) {
+      lastErr = e;
+      if (i < retries - 1) await sleep(1000 * Math.pow(2, i));
+    }
+  }
+  throw lastErr || new Error('Request failed after retries');
+}
+
+// Circuit breaker: stops hammering a failing service
+const PA_CIRCUIT_THRESHOLD = 3;
+const PA_CIRCUIT_TIMEOUT   = 5 * 60 * 1000; // 5 min cooldown
+const paCircuit = {};
+
+function isCircuitOpen(key) {
+  const c = paCircuit[key];
+  if (!c || c.failures < PA_CIRCUIT_THRESHOLD) return false;
+  if (Date.now() - c.openedAt > PA_CIRCUIT_TIMEOUT) {
+    c.failures = 0; c.openedAt = null; return false; // half-open: allow retry
+  }
+  return true;
+}
+function recordCircuitFailure(key) {
+  if (!paCircuit[key]) paCircuit[key] = { failures: 0, openedAt: null };
+  paCircuit[key].failures++;
+  if (paCircuit[key].failures >= PA_CIRCUIT_THRESHOLD) paCircuit[key].openedAt = Date.now();
+}
+function recordCircuitSuccess(key) {
+  if (paCircuit[key]) paCircuit[key].failures = 0;
+}
+
+// Health state: 'ok' | 'warn' | 'error' | 'unknown'
+const paHealthStatus = {};
+
+function updateHealthDot() {
+  const dot = document.getElementById('pa-health-dot');
+  if (!dot) return;
+  const states = Object.values(paHealthStatus);
+  if (!states.length) { dot.style.background = '#6b7280'; dot.title = 'No services connected'; return; }
+  const hasError = states.some(s => s === 'error');
+  const hasWarn  = states.some(s => s === 'warn');
+  dot.style.background = hasError ? '#ef4444' : hasWarn ? '#f59e0b' : '#10b981';
+  dot.title = hasError ? 'One or more services have errors' : hasWarn ? 'Some services are stale' : 'All systems healthy';
+}
+
+function showHealthPanel() {
+  const lines = ['**System Health**\n'];
+  Object.entries(paConnections).forEach(([k, c]) => {
+    if (!c.enabled) return;
+    const s = paHealthStatus[k] || 'unknown';
+    const icon = s==='ok'?'✅':s==='warn'?'⚠️':s==='error'?'❌':'❓';
+    const circuit = isCircuitOpen(k) ? ' (circuit open — cooling down)' : '';
+    const sync = c.lastSync ? `last sync: ${timeSince(new Date(c.lastSync))}` : 'never synced';
+    const err = c.error ? ` — ${c.error}` : '';
+    lines.push(`${icon} **${PA_SERVICE_DEFS[k]?.label||k}** · ${sync}${err}${circuit}`);
+  });
+  lines.push('\n_Click ⚡ Connections to manage or reconnect services._');
+  appendPAMessage('assistant', lines.join('\n'));
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// SMART SCHEDULER — adaptive sync, change detection, proactive alerts
+// ─────────────────────────────────────────────────────────────────────────────
+
+const PA_SYNC_INTERVALS = {
+  slack:  10 * 60 * 1000,  // most volatile
+  ms365:  15 * 60 * 1000,
+  gmail:  15 * 60 * 1000,
+  github: 20 * 60 * 1000,
+  gdrive: 30 * 60 * 1000,  // least volatile
+};
+
+// Store previous data snapshots for change detection
+const paPreviousData = {};
+
+function detectChanges(key, oldData, newData) {
+  if (!oldData || !newData) return [];
+  const alerts = [];
+  try {
+    if (key === 'ms365') {
+      const oldUnread = (oldData.emails||[]).filter(e=>!e.isRead).length;
+      const newUnread = (newData.emails||[]).filter(e=>!e.isRead).length;
+      if (newUnread > oldUnread) alerts.push(`📬 ${newUnread - oldUnread} new email(s) in Outlook`);
+      const newMeetings = newData.calendar?.length || 0;
+      const oldMeetings = oldData.calendar?.length || 0;
+      if (newMeetings > oldMeetings) alerts.push(`📅 ${newMeetings - oldMeetings} new meeting(s) added to today`);
+    }
+    if (key === 'gmail') {
+      const diff = (newData.totalUnread||0) - (oldData.totalUnread||0);
+      if (diff > 0) alerts.push(`📧 ${diff} new unread email(s) in Gmail`);
+    }
+    if (key === 'slack') {
+      const oldCount = (oldData.recentMessages||[]).length;
+      const newCount = (newData.recentMessages||[]).length;
+      if (newCount > oldCount) alerts.push(`💬 New Slack messages available`);
+    }
+    if (key === 'github') {
+      const newIssues = (newData.openIssues||[]).length - (oldData.openIssues||[]).length;
+      const newPRs    = (newData.openPRs||[]).length    - (oldData.openPRs||[]).length;
+      if (newIssues > 0) alerts.push(`🐙 ${newIssues} new GitHub issue(s) opened`);
+      if (newPRs > 0)    alerts.push(`🐙 ${newPRs} new pull request(s) opened`);
+    }
+  } catch(e) {}
+  return alerts;
+}
+
+function proactiveAlert(title, body) {
+  // Toast notification
+  notify('🧠', title, body);
+  // Also surface in PA feed if tab is open
+  const tab = document.getElementById('claude-tab-assistant');
+  if (tab && tab.style.display !== 'none') {
+    appendPAMessage('assistant', `🔔 **${title}**\n${body}`);
+  }
+}
+
+function updateSyncStatusLabel() {
+  const el = document.getElementById('pa-sync-status');
+  if (!el) return;
+  const connected = Object.keys(paConnections).filter(k => paConnections[k].enabled && paConnections[k].lastSync);
+  if (!connected.length) { el.textContent = '↻ No services connected'; return; }
+  const mostRecent = connected.reduce((best, k) => {
+    const t = new Date(paConnections[k].lastSync).getTime();
+    return t > (best?.t||0) ? { k, t } : best;
+  }, null);
+  el.textContent = mostRecent ? `↻ Updated ${timeSince(new Date(mostRecent.t))}` : '↻ Syncing…';
+}
+
+// Master scheduler — runs every minute
+async function paSchedulerTick() {
+  const now = Date.now();
+  let anySync = false;
+
+  for (const [key, conn] of Object.entries(paConnections)) {
+    if (!conn.enabled || isCircuitOpen(key)) continue;
+    const interval = PA_SYNC_INTERVALS[key] || 20 * 60 * 1000;
+    const stale = !conn.lastSync || (now - new Date(conn.lastSync).getTime()) > interval;
+    if (!stale) continue;
+
+    const oldData = conn.data ? JSON.parse(JSON.stringify(conn.data)) : null;
+    try {
+      await syncService(key);
+      recordCircuitSuccess(key);
+      paHealthStatus[key] = 'ok';
+      // Detect and alert on changes
+      const alerts = detectChanges(key, oldData, paConnections[key].data);
+      alerts.forEach(a => proactiveAlert('New Activity', a));
+      anySync = true;
+    } catch(e) {
+      recordCircuitFailure(key);
+      paHealthStatus[key] = 'error';
+    }
+  }
+
+  // Calendar overdue check
+  const overdueCount = tasks.filter(t => !t.done && t.date < todayStr()).length;
+  if (overdueCount > 0 && !paSchedulerTick._lastOverdueAlert || (now - (paSchedulerTick._lastOverdueAlert||0)) > 60 * 60 * 1000) {
+    if (overdueCount >= 3) {
+      proactiveAlert('Overdue Alert', `${overdueCount} tasks are overdue — your team needs attention.`);
+      paSchedulerTick._lastOverdueAlert = now;
+    }
+  }
+
+  updateSyncStatusLabel();
+  updateHealthDot();
   maybeAnalyzePatterns();
   renderPAFocusStrip();
   updatePAMemoryStatus();
-}, 5 * 60 * 1000);
+  if (anySync) renderConnectionsList();
+}
+
+// Run scheduler every 60 seconds
+setInterval(paSchedulerTick, 60 * 1000);
+
+// ─────────────────────────────────────────────────────────────────────────────
+// SELF-IMPROVEMENT — feedback, preferences, auto-analysis, dynamic quick actions
+// ─────────────────────────────────────────────────────────────────────────────
+
+const PA_PREFS_KEY = 'emt_pa_preferences';
+
+let paPreferences = {
+  customInstructions: '',
+  autoImprovements:   [],   // { instruction, addedAt, source }
+  feedbackLog:        [],   // { ts, msgId, rating, preview }
+  positivePatterns:   [],   // extracted from 👍 feedback
+  negativePatterns:   [],   // extracted from 👎 feedback
+  responseStyleVotes: { concise: 0, detailed: 0, bullets: 0 },
+  lastSelfAnalysis:   0,
+  improvementCount:   0,
+};
+
+function loadPAPreferences() {
+  try {
+    const raw = localStorage.getItem(PA_PREFS_KEY);
+    if (raw) paPreferences = Object.assign(paPreferences, JSON.parse(raw));
+    // Restore custom instructions textarea
+    const ta = document.getElementById('pa-custom-instr');
+    if (ta && paPreferences.customInstructions) ta.value = paPreferences.customInstructions;
+    updateImprovementBadge();
+  } catch(e) {}
+}
+
+function savePAPreferences() {
+  try { localStorage.setItem(PA_PREFS_KEY, JSON.stringify(paPreferences)); } catch(e) {}
+}
+
+function saveCustomInstructions() {
+  const ta = document.getElementById('pa-custom-instr');
+  if (ta) {
+    paPreferences.customInstructions = ta.value.trim();
+    savePAPreferences();
+  }
+}
+
+function toggleCustomInstructions() {
+  const wrap = document.getElementById('pa-custom-instr-wrap');
+  if (wrap) wrap.style.display = wrap.style.display === 'none' ? 'block' : 'none';
+}
+
+function recordFeedback(msgId, rating, btn) {
+  const msg = document.getElementById(msgId);
+  const preview = msg ? msg.innerText.substring(0, 100) : '';
+  const fb = btn?.closest('div');
+  if (fb) {
+    fb.dataset.rated = '1';
+    fb.style.opacity = '0.8';
+    btn.style.background = rating > 0 ? 'rgba(16,185,129,0.2)' : 'rgba(239,68,68,0.15)';
+    btn.style.color = rating > 0 ? '#10b981' : '#ef4444';
+    const label = document.getElementById(`fb-label-${msgId}`);
+    if (label) label.textContent = rating > 0 ? 'Marked helpful' : 'Got it, improving…';
+  }
+  paPreferences.feedbackLog.unshift({ ts: Date.now(), msgId, rating, preview });
+  if (paPreferences.feedbackLog.length > 100) paPreferences.feedbackLog = paPreferences.feedbackLog.slice(0, 100);
+
+  // Simple heuristic: detect style from positive feedback content
+  if (rating > 0 && preview) {
+    const hasBullets = (preview.match(/•|\n-|\n\d+\./g)||[]).length > 2;
+    const isShort    = preview.length < 200;
+    if (hasBullets)   paPreferences.responseStyleVotes.bullets++;
+    if (isShort)      paPreferences.responseStyleVotes.concise++;
+    else              paPreferences.responseStyleVotes.detailed++;
+  }
+  savePAPreferences();
+
+  // After 5 negative ratings trigger an early self-analysis
+  const recentNeg = paPreferences.feedbackLog.slice(0, 10).filter(f => f.rating < 0).length;
+  if (recentNeg >= 3 && Date.now() - paPreferences.lastSelfAnalysis > 30 * 60 * 1000) {
+    setTimeout(() => triggerSelfAnalysis(true), 2000);
+  }
+}
+
+function getDerivedStyle() {
+  const v = paPreferences.responseStyleVotes;
+  const topStyle = Object.entries(v).sort((a,b)=>b[1]-a[1])[0];
+  return topStyle && topStyle[1] > 0 ? topStyle[0] : 'balanced';
+}
+
+function getAutoImprovementsText() {
+  if (!paPreferences.autoImprovements.length) return '';
+  return `\nAUTO-IMPROVEMENTS (${paPreferences.autoImprovements.length} active, self-generated):\n` +
+    paPreferences.autoImprovements.slice(0, 8).map(i => `  • ${i.instruction}`).join('\n');
+}
+
+function updateImprovementBadge() {
+  const badge = document.getElementById('pa-improve-badge');
+  const n = paPreferences.autoImprovements.length;
+  if (badge) badge.textContent = n > 0 ? `${n} auto-improvement${n>1?'s':''} active` : '';
+}
+
+// Self-analysis: Claude reviews its own recent performance and proposes an improvement
+async function triggerSelfAnalysis(forced = false) {
+  if (!forced && Date.now() - paPreferences.lastSelfAnalysis < 30 * 60 * 1000) return;
+  paPreferences.lastSelfAnalysis = Date.now();
+  savePAPreferences();
+
+  const recentExchanges = paConversation.slice(-20)
+    .map(m => `[${m.role}]: ${m.content.substring(0, 200)}`).join('\n');
+  const negFeedback = paPreferences.feedbackLog.filter(f=>f.rating<0).slice(0,5)
+    .map(f=>`"${f.preview}"`).join('\n');
+  const currentImprovements = paPreferences.autoImprovements.map(i=>i.instruction).join('; ');
+
+  const metaPrompt = `You are analyzing your own recent performance as a Personal Assistant. Review the conversation and feedback below, then decide on ONE specific, concrete instruction to add to your operating guidelines to make future responses more helpful to this admin.
+
+RECENT EXCHANGES:
+${recentExchanges}
+
+RECENT NEGATIVE FEEDBACK (responses admin found unhelpful):
+${negFeedback || 'none'}
+
+CURRENT AUTO-IMPROVEMENTS ALREADY ACTIVE:
+${currentImprovements || 'none'}
+
+TASK: Return ONLY a single pa-action block. The instruction must be specific (not vague like "be better"). Focus on format, depth, timing, or content. Do not duplicate an existing improvement.
+
+\`\`\`pa-action
+{"type":"PA_IMPROVE","instruction":"<one specific instruction, max 120 chars>","rationale":"<one sentence why>"}
+\`\`\``;
+
+  try {
+    patchFetchWithApiKey();
+    const res = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: { 'Content-Type':'application/json', 'x-api-key':ANTHROPIC_API_KEY_HARDCODED, 'anthropic-version':'2023-06-01', 'anthropic-dangerous-direct-browser-access':'true' },
+      body: JSON.stringify({ model:'claude-opus-4-8', max_tokens:256, system:'You are a self-improving AI assistant. Analyze the conversation and produce exactly one pa-action JSON block as instructed.', messages:[{role:'user',content:metaPrompt}] })
+    });
+    if (!res.ok) return;
+    const data = await res.json();
+    const text = data.content?.[0]?.text || '';
+    const match = text.match(/```pa-action\s*([\s\S]*?)```/);
+    if (match) {
+      const action = JSON.parse(match[1].trim());
+      if (action.type === 'PA_IMPROVE' && action.instruction) {
+        applyAutoImprovement(action.instruction, action.rationale);
+      }
+    }
+  } catch(e) {}
+}
+
+function applyAutoImprovement(instruction, rationale = '') {
+  // Don't duplicate
+  if (paPreferences.autoImprovements.some(i => i.instruction.toLowerCase() === instruction.toLowerCase())) return;
+  paPreferences.autoImprovements.unshift({ instruction, rationale, addedAt: new Date().toISOString() });
+  if (paPreferences.autoImprovements.length > 12) paPreferences.autoImprovements = paPreferences.autoImprovements.slice(0, 12);
+  paPreferences.improvementCount++;
+  savePAPreferences();
+  updateImprovementBadge();
+  appendPAMessage('assistant', `🧠 **Self-improvement applied** (#${paPreferences.improvementCount})\n**Instruction:** ${instruction}${rationale ? `\n**Why:** ${rationale}` : ''}\n\nThis improvement is now active in all future responses.`);
+}
+
+// Dynamic quick actions — base set + top patterns from memory
+const PA_DEFAULT_QUICK_ACTIONS = [
+  { icon:'📅', label:'Plan Day',    prompt:'Plan my day — give me a structured schedule and priorities for today based on all tasks, team workload, and deadlines.' },
+  { icon:'🎯', label:'Focus',       prompt:'What needs my immediate attention right now? Focus on critical, overdue, or high-priority items.' },
+  { icon:'⚖️', label:'Team',        prompt:'Give me a full team health check — who is overloaded, who has capacity, any bottlenecks, and recommendations.' },
+  { icon:'🌙', label:'EOD',         prompt:"Generate an end-of-day summary — what was completed today, what is pending, and what to prioritize tomorrow." },
+  { icon:'📈', label:'Insights',    prompt:'Show me productivity insights — trends in task completion, overdue patterns, and recommendations for the team.' },
+  { icon:'📢', label:'Status',      prompt:"Help me draft a brief status update for the team based on today's activity." },
+];
+
+function renderDynamicQuickActions() {
+  const bar = document.getElementById('pa-quick-actions-bar');
+  if (!bar) return;
+  bar.innerHTML = '';
+
+  // Merge default actions with top frequent commands from memory
+  const learned = (paMemory.patterns?.frequentCommands || [])
+    .filter(c => !PA_DEFAULT_QUICK_ACTIONS.some(d => c.text.includes(d.label.toLowerCase())))
+    .slice(0, 2)
+    .map(c => ({ icon:'🔁', label: c.text.substring(0,18)+'…', prompt: c.text, learned: true }));
+
+  const actions = [...PA_DEFAULT_QUICK_ACTIONS, ...learned];
+
+  actions.forEach(a => {
+    const btn = document.createElement('button');
+    btn.className = 'claude-quick-btn';
+    btn.style.fontSize = '10px';
+    if (a.learned) { btn.style.borderColor = 'rgba(124,58,237,0.4)'; btn.style.color = '#7c3aed'; }
+    btn.title = a.prompt;
+    btn.textContent = `${a.icon} ${a.label}`;
+    btn.onclick = () => paQuick(a.prompt);
+    bar.appendChild(btn);
+  });
+
+  // Connections toggle always last
+  const connBtn = document.createElement('button');
+  connBtn.className = 'claude-quick-btn';
+  connBtn.id = 'pa-conn-toggle';
+  connBtn.style.cssText = 'font-size:10px;border-color:rgba(59,130,246,0.4);color:#3b82f6;';
+  connBtn.textContent = '⚡ Connections';
+  connBtn.onclick = toggleConnectionsDrawer;
+  bar.appendChild(connBtn);
+}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // PA CONNECTIONS — manage all granted service integrations
@@ -9935,6 +10374,10 @@ async function executePAAction(action) {
       }
       return `📝 Draft prepared (not sent):\nTo: ${to}\nSubject: ${subject}\n\n${body}`;
     }
+
+    case 'PA_IMPROVE':
+      applyAutoImprovement(action.instruction, action.rationale);
+      return null; // handled inside applyAutoImprovement
 
     default:
       return null;
