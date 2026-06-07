@@ -3422,8 +3422,12 @@
         <div>
           <div style="font-size:13px;font-weight:600;color:var(--text);">🧠 Personal Assistant</div>
           <div id="pa-date-line" style="font-size:10px;color:var(--text3);font-family:'DM Mono',monospace;margin-top:2px;"></div>
+          <div id="pa-memory-status" style="font-size:9px;color:#7c3aed;font-family:'DM Mono',monospace;margin-top:2px;opacity:0.85;">🧠 Memory initializing…</div>
         </div>
-        <button onclick="generateDailyBriefing()" id="pa-briefing-btn" class="btn btn-primary" style="font-size:11px;padding:5px 12px;gap:4px;background:linear-gradient(135deg,#7c3aed,#e10600);">☀️ Briefing</button>
+        <div style="display:flex;gap:5px;">
+          <button onclick="showPAMemoryPanel()" class="btn btn-ghost" style="font-size:10px;padding:4px 9px;color:#7c3aed;border-color:rgba(124,58,237,0.3);" title="Show what the assistant has learned">📊</button>
+          <button onclick="generateDailyBriefing()" id="pa-briefing-btn" class="btn btn-primary" style="font-size:11px;padding:5px 12px;gap:4px;background:linear-gradient(135deg,#7c3aed,#e10600);">☀️ Briefing</button>
+        </div>
       </div>
       <!-- Focus mode quick stats -->
       <div id="pa-focus-strip" style="display:flex;gap:6px;flex-wrap:wrap;"></div>
@@ -3786,6 +3790,7 @@ function init() {
   loadFilesFromStorage();
   loadHistory();
   loadDailyImprovements();
+  loadPAMemory();
 
   // 2. Check if page was opened via an invite link (?invite=CODE)
   const urlParams = new URLSearchParams(window.location.search);
@@ -7868,6 +7873,7 @@ function logLiveEdit(icon, text) {
   const now = new Date();
   const time = now.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
   liveEditLog.unshift({ icon, text, time });
+  paLogEdit(icon, text);
 
   const logEl = document.getElementById('live-edits-log');
   const emptyEl = document.getElementById('live-edits-empty');
@@ -8253,6 +8259,7 @@ async function sendToClaudeAI(skipInputRead = false) {
     if (input) { input.value = ''; input.style.height = 'auto'; }
     appendClaudeMessage('user', userText.replace(/\n/g,'<br>'));
     claudeConversation.push({ role:'user', content:userText });
+    paLogCommand(userText, 'chat');
   }
   // Queue this call and process
   claudeQueue.push([...claudeConversation]);
@@ -8632,43 +8639,99 @@ function buildPASystemPrompt() {
   const now = new Date();
   const hour = now.getHours();
   const greeting = hour < 12 ? 'morning' : hour < 17 ? 'afternoon' : 'evening';
-  const todayTasks = ctx.allTasks.filter(t => t.date === ctx.today);
-  const overdueTasks = ctx.allTasks.filter(t => !t.done && t.date < ctx.today);
-  const highPrio = ctx.allTasks.filter(t => !t.done && t.priority === 'high');
+  const todayTasks    = ctx.allTasks.filter(t => t.date === ctx.today);
+  const overdueTasks  = ctx.allTasks.filter(t => !t.done && t.date < ctx.today);
+  const highPrio      = ctx.allTasks.filter(t => !t.done && t.priority === 'high');
   const totalWorkload = ctx.teamMembers.map(m => `${m.name}: ${m.activeTasks} tasks`).join(', ');
 
-  return `You are a sharp, insightful Personal Assistant for the Electrode Maintenance Team admin. Your role is to help the admin optimize their day, make better decisions, and stay ahead of their team's needs. You are NOT here to make system changes — the Chat tab handles that. You are a strategic advisor, day planner, and productivity coach.
+  // ── All-access artifacts ──────────────────────────────────────────────────
+  // Recent admin chat history (last 12 exchanges from the Chat tab)
+  const recentAdminChat = claudeConversation.slice(-12).map(m =>
+    `[${m.role.toUpperCase()}]: ${m.content.substring(0, 250)}`
+  ).join('\n');
 
-━━━ CURRENT CONTEXT [${now.toLocaleString()}] ━━━
-• Good ${greeting}! Today is ${ctx.today} (${now.toLocaleDateString('en-US',{weekday:'long'})})
-• Team size: ${ctx.teamSize} | Total tasks: ${ctx.totalTasks} (${ctx.openTasks} open, ${ctx.overdueTasks} overdue)
-• High-priority open tasks: ${highPrio.length}
-• Today's scheduled tasks: ${todayTasks.length}
-• Overdue tasks: ${overdueTasks.length}
+  // Task notes (all annotations added to tasks)
+  const taskNoteEntries = Object.entries(taskNotes).map(([taskId, notes]) => {
+    const task = tasks.find(t => String(t.id) === String(taskId));
+    const label = task ? `${task.taskNum}: ${task.title}` : `Task #${taskId}`;
+    const noteList = Array.isArray(notes) ? notes.map(n => n.text||n).join(' | ') : String(notes);
+    return `  ${label} → ${noteList.substring(0, 150)}`;
+  }).join('\n');
 
-TEAM WORKLOAD: ${totalWorkload}
+  // All announcements
+  const allAnnouncements = announcements.slice(0, 10).map(a =>
+    `  [${a.type?.toUpperCase()||'INFO'}${a.pinned?' PINNED':''}] ${a.title}: ${(a.body||'').substring(0,100)}`
+  ).join('\n');
 
-TODAY'S TASKS:
-${todayTasks.length ? todayTasks.map(t => `  [${t.priority.toUpperCase()}] ${t.title} (ID:${t.id}, ${t.done?'DONE':'OPEN'}, assigned:${t.assignee||'unassigned'})`).join('\n') : '  (none scheduled for today)'}
+  // Files in the system
+  const fileList = (filesData?.folders || []).flatMap(f => (f.files||[]).map(fi =>
+    `  ${f.name}/${fi.name} (${fi.size ? Math.round(fi.size/1024)+'KB' : '?'}) — ${fi.uploadedAt||''}`
+  )).slice(0, 20).join('\n');
 
-OVERDUE TASKS (${overdueTasks.length}):
-${overdueTasks.slice(0,10).map(t => `  [${t.priority.toUpperCase()}] ${t.title} — was due ${t.date} (ID:${t.id})`).join('\n') || '  (none)'}
+  // Session history (login/activity dates)
+  const sessionHistory = (() => {
+    try {
+      const raw = localStorage.getItem('emt_session_history');
+      if (!raw) return '(none)';
+      return JSON.parse(raw).slice(0,8).map(s => `  ${s.type} — ${new Date(s.timestamp).toLocaleString()}`).join('\n');
+    } catch(e) { return '(unavailable)'; }
+  })();
 
-HIGH-PRIORITY OPEN:
-${highPrio.slice(0,8).map(t => `  ${t.title} — due ${t.date} (ID:${t.id})`).join('\n') || '  (none)'}
+  // CMMS approved upgrades detail
+  const approvedDetail = approvedUpgrades.length
+    ? approvedUpgrades.join(', ')
+    : 'none';
 
-TEAM MEMBERS:
+  return `You are a sharp, insightful Personal Assistant for the Electrode Maintenance Team admin. You have FULL ACCESS to all system data: every task, note, chat, announcement, file, session, code change, and action ever recorded. Use this complete picture to give the most accurate, personalized advice possible. You do NOT make system changes (that is the Chat tab's role) — you are a strategic advisor, day planner, and productivity coach.
+
+━━━ LIVE SNAPSHOT [${now.toLocaleString()}] ━━━
+Good ${greeting}! Today: ${ctx.today} (${now.toLocaleDateString('en-US',{weekday:'long'})})
+Team: ${ctx.teamSize} members · Tasks: ${ctx.totalTasks} total · ${ctx.openTasks} open · ${ctx.overdueTasks} OVERDUE
+High-priority open: ${highPrio.length} · Today's tasks: ${todayTasks.length}
+CMMS: ${ctx.cmmsProgress} · Approved upgrades: ${approvedDetail}
+
+━━━ ALL TASKS (${ctx.totalTasks}) ━━━
+${JSON.stringify(ctx.allTasks)}
+
+━━━ TODAY'S TASKS (${todayTasks.length}) ━━━
+${todayTasks.length ? todayTasks.map(t => `  [${t.priority.toUpperCase()}] ${t.title} · ID:${t.id} · ${t.done?'DONE':'OPEN'} · assigned:${t.assignee||'unassigned'}`).join('\n') : '  (none today)'}
+
+━━━ OVERDUE (${overdueTasks.length}) ━━━
+${overdueTasks.slice(0,15).map(t => `  [${t.priority.toUpperCase()}] ${t.title} — due ${t.date} · ID:${t.id}`).join('\n') || '  (none)'}
+
+━━━ TEAM WORKLOAD ━━━
 ${JSON.stringify(ctx.teamMembers)}
+
+━━━ DAY NOTES ━━━
+${Object.entries(ctx.dayNotes||{}).slice(-14).map(([d,n])=>`  ${d}: ${String(n).substring(0,120)}`).join('\n')||'  (none)'}
+
+━━━ TASK NOTES ━━━
+${taskNoteEntries || '  (none)'}
+
+━━━ ANNOUNCEMENTS (${announcements.length} total) ━━━
+${allAnnouncements || '  (none)'}
+
+━━━ SHARED FILES ━━━
+${fileList || '  (none)'}
+
+━━━ RECENT ADMIN CHAT HISTORY ━━━
+${recentAdminChat || '  (no recent chat)'}
+
+━━━ SESSION HISTORY ━━━
+${sessionHistory}
 
 ━━━ HOW YOU OPERATE ━━━
 - Be direct, specific, and actionable. No fluff.
-- When you give a plan or priority list, format it clearly with bullet points or numbered steps.
-- Proactively flag risks (overdue items, overloaded team members, upcoming deadlines).
-- Suggest concrete next actions the admin can take.
-- For the daily briefing: give a tight morning summary — top 3 priorities, key risks, team status, one recommendation.
-- For day planning: create a realistic, time-aware schedule.
-- For end-of-day: summarize completed work, flag open items, set up tomorrow.
-- Keep responses concise and high-signal. The admin is busy.`;
+- Use ALL the context above — cross-reference tasks, notes, chat history, and files.
+- Proactively surface risks: overdue items, overloaded members, upcoming deadlines, stale announcements.
+- When you spot recurring patterns (same tasks, same questions, same problems), call them out explicitly.
+- For daily briefing: tight command summary — top 3 priorities, team risks, one recommendation.
+- For day planning: realistic, time-aware schedule using actual task data.
+- For end-of-day: what was done, what is open, what to tackle tomorrow.
+- Keep responses concise and high-signal. The admin is busy.
+- USE the learned profile below — reference what you've noticed, anticipate needs, personalise every response.
+
+${getLearnedContext()}`;
 }
 
 function initPATab() {
@@ -8719,6 +8782,7 @@ async function sendToPA(overrideText) {
 
   appendPAMessage('user', userText.replace(/\n/g,'<br>'));
   paConversation.push({ role:'user', content:userText });
+  paLogCommand(userText, 'pa');
 
   paIsProcessing = true;
   const sendBtn = document.getElementById('pa-send-btn');
@@ -8797,8 +8861,8 @@ function paQuick(prompt) {
 function generateDailyBriefing() {
   const ctx = buildCalendarContext();
   const now = new Date();
-  const hour = now.getHours();
   const todayCount = ctx.allTasks.filter(t => t.date === ctx.today).length;
+  const learnedNote = paMemory.patterns ? `\nNote: you have ${paMemory.commandLog.length} commands and ${paMemory.actionLog.length} actions in your learning history — use those patterns to personalise this briefing.` : '';
   const prompt = `Generate my daily briefing for ${ctx.today} (${now.toLocaleDateString('en-US',{weekday:'long'})}). I want:
 
 1. **Today's Snapshot** — quick stats (tasks today, overdue count, team status)
@@ -8806,12 +8870,326 @@ function generateDailyBriefing() {
 3. **Team Watch** — any team members who need attention (overloaded, underloaded, at-risk tasks)
 4. **Risks & Flags** — anything that could go wrong today if not addressed
 5. **My One Recommendation** — the single most impactful action I should take right now
-
+${learnedNote}
 Be sharp and concise. This is my morning command briefing.`;
   sendToPA(prompt);
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// PA MEMORY — Continuous monitoring, learning, and pattern detection
+// ─────────────────────────────────────────────────────────────────────────────
+
+const PA_MEMORY_KEY = 'emt_pa_memory';
+const PA_MAX_COMMANDS = 300;
+const PA_MAX_ACTIONS  = 600;
+const PA_MAX_EDITS    = 400;
+const PA_MAX_PUSHES   = 150;
+
+let paMemory = {
+  commandLog: [],
+  actionLog:  [],
+  editLog:    [],
+  pushLog:    [],
+  patterns:   null,
+  lastAnalyzed: 0,
+};
+
+function loadPAMemory() {
+  try {
+    const raw = localStorage.getItem(PA_MEMORY_KEY);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      paMemory = Object.assign(paMemory, parsed);
+    }
+  } catch(e) {}
+  // Run initial analysis if we have data and it's stale
+  if (paMemory.commandLog.length > 0) analyzePatterns();
+}
+
+function savePAMemory() {
+  try { localStorage.setItem(PA_MEMORY_KEY, JSON.stringify(paMemory)); } catch(e) {}
+}
+
+function paLogCommand(text, source = 'chat') {
+  const now = new Date();
+  paMemory.commandLog.unshift({
+    text: text.substring(0, 300),
+    source,
+    ts:   now.getTime(),
+    day:  now.toLocaleDateString('en-US', { weekday: 'short' }),
+    hour: now.getHours(),
+    date: todayStr(),
+  });
+  if (paMemory.commandLog.length > PA_MAX_COMMANDS)
+    paMemory.commandLog = paMemory.commandLog.slice(0, PA_MAX_COMMANDS);
+  savePAMemory();
+  maybeAnalyzePatterns();
+  updatePAMemoryStatus();
+}
+
+function paLogAction(action) {
+  // Skip non-actionable or internal types
+  if (!action || !action.type) return;
+  const now = new Date();
+  paMemory.actionLog.unshift({
+    type:       action.type,
+    title:      action.title      || null,
+    priority:   action.priority   || null,
+    assigneeId: action.assigneeId || null,
+    date:       action.date       || null,
+    ts:         now.getTime(),
+    day:        now.toLocaleDateString('en-US', { weekday: 'short' }),
+    hour:       now.getHours(),
+    sessionDate: todayStr(),
+  });
+  if (paMemory.actionLog.length > PA_MAX_ACTIONS)
+    paMemory.actionLog = paMemory.actionLog.slice(0, PA_MAX_ACTIONS);
+  savePAMemory();
+}
+
+function paLogEdit(icon, rawText) {
+  const text = rawText.replace(/<[^>]+>/g, '').trim();
+  if (!text) return;
+  const now = new Date();
+  paMemory.editLog.unshift({
+    icon,
+    text: text.substring(0, 200),
+    ts:   now.getTime(),
+    day:  now.toLocaleDateString('en-US', { weekday: 'short' }),
+    date: todayStr(),
+  });
+  if (paMemory.editLog.length > PA_MAX_EDITS)
+    paMemory.editLog = paMemory.editLog.slice(0, PA_MAX_EDITS);
+  savePAMemory();
+}
+
+function paLogPush(type, description) {
+  const now = new Date();
+  paMemory.pushLog.unshift({
+    type,
+    description: description.substring(0, 200),
+    ts:   now.getTime(),
+    date: todayStr(),
+  });
+  if (paMemory.pushLog.length > PA_MAX_PUSHES)
+    paMemory.pushLog = paMemory.pushLog.slice(0, PA_MAX_PUSHES);
+  savePAMemory();
+}
+
+function maybeAnalyzePatterns() {
+  const fiveMin = 5 * 60 * 1000;
+  if (Date.now() - paMemory.lastAnalyzed < fiveMin) return;
+  analyzePatterns();
+}
+
+function analyzePatterns() {
+  const commands = paMemory.commandLog;
+  const actions  = paMemory.actionLog;
+
+  // ── Frequent commands (normalize away dates/IDs) ──
+  const cmdMap = {};
+  commands.forEach(c => {
+    const norm = c.text.toLowerCase()
+      .replace(/\d{4}-\d{2}-\d{2}/g, 'DATE')
+      .replace(/\b(id|task|#)?\s*\d+\b/gi, 'N')
+      .replace(/\s+/g, ' ')
+      .substring(0, 100);
+    cmdMap[norm] = (cmdMap[norm] || 0) + 1;
+  });
+  const frequentCommands = Object.entries(cmdMap)
+    .filter(([, v]) => v >= 2)
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 10)
+    .map(([text, count]) => ({ text, count }));
+
+  // ── Peak usage hours ──
+  const hourMap = {};
+  commands.forEach(c => { hourMap[c.hour] = (hourMap[c.hour] || 0) + 1; });
+  const peakHours = Object.entries(hourMap)
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 3)
+    .map(([hour, count]) => ({ hour: parseInt(hour), count }));
+
+  // ── Most active days ──
+  const dayMap = {};
+  commands.forEach(c => { dayMap[c.day] = (dayMap[c.day] || 0) + 1; });
+  const activeDays = Object.entries(dayMap)
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 3)
+    .map(([day]) => day);
+
+  // ── Frequent action types ──
+  const actionMap = {};
+  actions.forEach(a => { actionMap[a.type] = (actionMap[a.type] || 0) + 1; });
+  const frequentActions = Object.entries(actionMap)
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 6)
+    .map(([type, count]) => ({ type, count }));
+
+  // ── Preferred assignees ──
+  const assigneeMap = {};
+  actions.filter(a => a.assigneeId).forEach(a => {
+    assigneeMap[a.assigneeId] = (assigneeMap[a.assigneeId] || 0) + 1;
+  });
+  const preferredAssignees = Object.entries(assigneeMap)
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 4)
+    .map(([id, count]) => {
+      const member = TEAM.find(m => m.id === parseInt(id));
+      return { id: parseInt(id), name: member?.name || `Member #${id}`, count };
+    });
+
+  // ── Recurring task title words ──
+  const titleWords = {};
+  actions.filter(a => a.type === 'CREATE_TASK' && a.title).forEach(a => {
+    a.title.toLowerCase().split(/\s+/).filter(w => w.length > 3).forEach(w => {
+      titleWords[w] = (titleWords[w] || 0) + 1;
+    });
+  });
+  const recurringKeywords = Object.entries(titleWords)
+    .filter(([, v]) => v >= 2)
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 8)
+    .map(([word, count]) => ({ word, count }));
+
+  // ── Recurring full task titles ──
+  const titleMap = {};
+  actions.filter(a => a.type === 'CREATE_TASK' && a.title).forEach(a => {
+    const k = a.title.toLowerCase().trim();
+    titleMap[k] = (titleMap[k] || 0) + 1;
+  });
+  const recurringTasks = Object.entries(titleMap)
+    .filter(([, v]) => v >= 2)
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 6)
+    .map(([title, count]) => ({ title, count }));
+
+  // ── Preferred priority ──
+  const prioMap = {};
+  actions.filter(a => a.priority).forEach(a => {
+    prioMap[a.priority] = (prioMap[a.priority] || 0) + 1;
+  });
+  const preferredPriority = Object.entries(prioMap).sort((a, b) => b[1] - a[1])[0]?.[0] || 'med';
+
+  // ── PA vs Chat usage split ──
+  const paCount   = commands.filter(c => c.source === 'pa').length;
+  const chatCount = commands.filter(c => c.source === 'chat').length;
+
+  // ── Recent code changes ──
+  const recentPushes = paMemory.pushLog.slice(0, 12);
+
+  // ── Recent edits (clean) ──
+  const recentEdits = paMemory.editLog.slice(0, 20).map(e => `${e.icon} ${e.text}`);
+
+  // ── Session dates ──
+  const sessionDates = [...new Set(commands.map(c => c.date))].slice(0, 14);
+
+  paMemory.patterns = {
+    frequentCommands,
+    peakHours,
+    activeDays,
+    frequentActions,
+    preferredAssignees,
+    recurringKeywords,
+    recurringTasks,
+    preferredPriority,
+    recentPushes,
+    recentEdits,
+    totalCommands:  commands.length,
+    totalActions:   actions.length,
+    totalEdits:     paMemory.editLog.length,
+    totalPushes:    paMemory.pushLog.length,
+    paCount,
+    chatCount,
+    sessionDates,
+  };
+  paMemory.lastAnalyzed = Date.now();
+  savePAMemory();
+  updatePAMemoryStatus();
+}
+
+function getLearnedContext() {
+  if (!paMemory.patterns || paMemory.commandLog.length === 0) return '(No learned profile yet — data accumulates as you use the system)';
+  const p = paMemory.patterns;
+  const fmt = h => { const ampm = h < 12 ? 'am' : 'pm'; return (h % 12 || 12) + ampm; };
+  const lines = ['━━━ LEARNED PROFILE (continuous monitoring) ━━━'];
+  lines.push(`• Monitoring depth: ${p.totalCommands} commands · ${p.totalActions} actions · ${p.totalEdits} edits · ${p.totalPushes} code pushes`);
+  lines.push(`• Usage split: ${p.paCount} via Personal Assistant · ${p.chatCount} via Admin Chat`);
+  if (p.sessionDates.length) lines.push(`• Active sessions: ${p.sessionDates.slice(0,7).join(', ')}`);
+  if (p.peakHours.length) lines.push(`• Peak activity hours: ${p.peakHours.map(h => fmt(h.hour)).join(', ')}`);
+  if (p.activeDays.length) lines.push(`• Most active days: ${p.activeDays.join(', ')}`);
+  if (p.preferredAssignees.length) lines.push(`• Preferred assignees: ${p.preferredAssignees.map(a => `${a.name} (${a.count}×)`).join(', ')}`);
+  if (p.preferredPriority) lines.push(`• Most-used priority: ${p.preferredPriority}`);
+  if (p.recurringTasks.length) lines.push(`• Recurring tasks: ${p.recurringTasks.map(t => `"${t.title}" (${t.count}×)`).join('; ')}`);
+  if (p.recurringKeywords.length) lines.push(`• Common task keywords: ${p.recurringKeywords.map(k => k.word).join(', ')}`);
+  if (p.frequentActions.length) lines.push(`• Top actions: ${p.frequentActions.map(a => `${a.type}(${a.count}×)`).join(', ')}`);
+  if (p.frequentCommands.length) {
+    lines.push(`• Repeated requests (top ${Math.min(p.frequentCommands.length, 6)}):`);
+    p.frequentCommands.slice(0, 6).forEach(c => lines.push(`  – "${c.text}" · ${c.count}×`));
+  }
+  if (p.recentPushes.length) {
+    lines.push(`• Recent code changes (${p.recentPushes.length}):`);
+    p.recentPushes.slice(0, 8).forEach(e => lines.push(`  – [${e.type}] ${e.description}`));
+  }
+  if (p.recentEdits.length) {
+    lines.push(`• Recent live edits (last 10):`);
+    p.recentEdits.slice(0, 10).forEach(e => lines.push(`  – ${e}`));
+  }
+  return lines.join('\n');
+}
+
+function updatePAMemoryStatus() {
+  const el = document.getElementById('pa-memory-status');
+  if (!el) return;
+  const total = paMemory.commandLog.length + paMemory.actionLog.length + paMemory.editLog.length + paMemory.pushLog.length;
+  const patStr = paMemory.patterns
+    ? `${paMemory.patterns.frequentCommands.length} patterns · ${paMemory.patterns.recurringTasks.length} recurring tasks`
+    : 'analyzing…';
+  el.textContent = `🧠 ${total} events logged · ${patStr}`;
+}
+
+function showPAMemoryPanel() {
+  const feed = document.getElementById('pa-messages');
+  if (!feed) return;
+  analyzePatterns();
+  const p = paMemory.patterns;
+  if (!p || paMemory.commandLog.length === 0) {
+    appendPAMessage('assistant', '📊 **No memory data yet.** Start using Claude Chat and the Personal Assistant — every command, action, and code change is recorded and learned from.');
+    return;
+  }
+  const fmt = h => { const ampm = h < 12 ? 'am' : 'pm'; return (h % 12 || 12) + ampm; };
+  let out = `📊 **Learned Profile — ${new Date().toLocaleString()}**\n\n`;
+  out += `**Monitoring depth:** ${p.totalCommands} commands · ${p.totalActions} actions · ${p.totalEdits} edits · ${p.totalPushes} code pushes\n\n`;
+  if (p.peakHours.length) out += `**Peak hours:** ${p.peakHours.map(h => fmt(h.hour)).join(', ')}\n`;
+  if (p.activeDays.length) out += `**Most active days:** ${p.activeDays.join(', ')}\n`;
+  if (p.preferredAssignees.length) out += `**Top assignees:** ${p.preferredAssignees.map(a=>`${a.name} (${a.count}×)`).join(', ')}\n`;
+  if (p.recurringTasks.length) {
+    out += `\n**Recurring tasks detected:**\n`;
+    p.recurringTasks.forEach(t => { out += `- "${t.title}" · seen ${t.count}×\n`; });
+  }
+  if (p.frequentCommands.length) {
+    out += `\n**Frequently repeated requests:**\n`;
+    p.frequentCommands.slice(0, 5).forEach(c => { out += `- "${c.text}" · ${c.count}×\n`; });
+  }
+  if (p.frequentActions.length) {
+    out += `\n**Top calendar actions:** ${p.frequentActions.map(a=>`${a.type}(${a.count}×)`).join(', ')}\n`;
+  }
+  if (p.recentPushes.length) {
+    out += `\n**Recent code changes:**\n`;
+    p.recentPushes.slice(0, 5).forEach(e => { out += `- [${e.type}] ${e.description}\n`; });
+  }
+  appendPAMessage('assistant', out);
+}
+
+// Continuous monitoring interval — re-analyze every 5 min, refresh focus strip
+setInterval(() => {
+  maybeAnalyzePatterns();
+  renderPAFocusStrip();
+  updatePAMemoryStatus();
+}, 5 * 60 * 1000);
+
 function executeCalendarAction(action) {
+  paLogAction(action);
   switch(action.type) {
     case 'CREATE_TASK': {
       const tn = genTaskNumber();
@@ -9073,6 +9451,7 @@ function executeCalendarAction(action) {
       githubInjectCSS(css, desc).then(ok => {
         if (ok) githubShowDeployStatus();
       });
+      paLogPush('CSS', desc);
       logLiveEdit('🚀', `GitHub CSS push queued: <strong>${desc}</strong>`);
       return `🚀 Pushing CSS to GitHub: "${desc}" — will be live in ~60s`;
     }
@@ -9084,6 +9463,7 @@ function executeCalendarAction(action) {
       githubInjectJS(js, desc).then(ok => {
         if (ok) githubShowDeployStatus();
       });
+      paLogPush('JS', desc);
       logLiveEdit('🚀', `GitHub JS push queued: <strong>${desc}</strong>`);
       return `🚀 Pushing JS to GitHub: "${desc}" — will be live in ~60s`;
     }
@@ -9096,6 +9476,7 @@ function executeCalendarAction(action) {
       githubReplaceSection(search, replace, desc).then(ok => {
         if (ok) githubShowDeployStatus();
       });
+      paLogPush('HTML', desc);
       logLiveEdit('🚀', `GitHub HTML push queued: <strong>${desc}</strong>`);
       return `🚀 Pushing HTML to GitHub: "${desc}" — will be live in ~60s`;
     }
