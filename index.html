@@ -3335,6 +3335,10 @@
       <span id="improvements-badge" style="display:none;position:absolute;top:4px;right:4px;background:#f59e0b;color:#fff;border-radius:50%;width:14px;height:14px;font-size:8px;font-family:'DM Mono',monospace;font-weight:700;align-items:center;justify-content:center;">1</span>
     </button>
     <button class="claude-tab" id="ctab-roadmap" onclick="setClaudeTab('roadmap')" style="flex:1;padding:8px 0;font-size:10px;font-family:'DM Sans',sans-serif;font-weight:500;background:none;border:none;cursor:pointer;color:var(--text2);border-bottom:2px solid transparent;transition:all 0.15s;">🗺 Map</button>
+    <button class="claude-tab" id="ctab-assistant" onclick="setClaudeTab('assistant')" style="flex:1;padding:8px 0;font-size:10px;font-family:'DM Sans',sans-serif;font-weight:500;background:none;border:none;cursor:pointer;color:var(--text2);border-bottom:2px solid transparent;transition:all 0.15s;position:relative;">
+      🧠 Me
+      <span id="assistant-badge" style="display:none;position:absolute;top:4px;right:2px;background:#7c3aed;color:#fff;border-radius:50%;width:14px;height:14px;font-size:8px;font-family:'DM Mono',monospace;font-weight:700;align-items:center;justify-content:center;"></span>
+    </button>
   </div>
 
   <!-- TAB: CHAT -->
@@ -3408,6 +3412,47 @@
       <div id="daily-improve-status" style="font-size:10px;color:var(--text3);font-family:'DM Mono',monospace;"></div>
     </div>
     <div id="daily-improvements-list" style="flex:1;overflow-y:auto;padding:12px 14px;"></div>
+  </div>
+
+  <!-- TAB: PERSONAL ASSISTANT -->
+  <div id="claude-tab-assistant" style="display:none;flex-direction:column;flex:1;overflow:hidden;">
+    <!-- Briefing header -->
+    <div style="padding:12px 14px 10px;border-bottom:1px solid var(--border);flex-shrink:0;background:linear-gradient(135deg,rgba(124,58,237,0.08),rgba(225,6,0,0.05));">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
+        <div>
+          <div style="font-size:13px;font-weight:600;color:var(--text);">🧠 Personal Assistant</div>
+          <div id="pa-date-line" style="font-size:10px;color:var(--text3);font-family:'DM Mono',monospace;margin-top:2px;"></div>
+        </div>
+        <button onclick="generateDailyBriefing()" id="pa-briefing-btn" class="btn btn-primary" style="font-size:11px;padding:5px 12px;gap:4px;background:linear-gradient(135deg,#7c3aed,#e10600);">☀️ Briefing</button>
+      </div>
+      <!-- Focus mode quick stats -->
+      <div id="pa-focus-strip" style="display:flex;gap:6px;flex-wrap:wrap;"></div>
+    </div>
+
+    <!-- Quick action buttons -->
+    <div style="padding:8px 14px;border-bottom:1px solid var(--border);display:flex;gap:5px;flex-wrap:wrap;flex-shrink:0;background:var(--surface);">
+      <button class="claude-quick-btn" onclick="paQuick('Plan my day — give me a structured schedule and priorities for today based on all tasks, team workload, and deadlines.')" style="font-size:10px;">📅 Plan Day</button>
+      <button class="claude-quick-btn" onclick="paQuick('What needs my immediate attention right now? Focus on critical, overdue, or high-priority items.')" style="font-size:10px;">🎯 Focus</button>
+      <button class="claude-quick-btn" onclick="paQuick('Give me a full team health check — who is overloaded, who has capacity, any bottlenecks, and recommendations.')" style="font-size:10px;">⚖️ Team Check</button>
+      <button class="claude-quick-btn" onclick="paQuick('Generate an end-of-day summary — what was completed today, what is pending, and what to prioritize tomorrow.')" style="font-size:10px;">🌙 EOD</button>
+      <button class="claude-quick-btn" onclick="paQuick('Show me productivity insights — trends in task completion, overdue patterns, and recommendations for the team.')" style="font-size:10px;">📈 Insights</button>
+      <button class="claude-quick-btn" onclick="paQuick('Help me draft a brief status update for the team based on today\'s activity.')" style="font-size:10px;">📢 Status</button>
+    </div>
+
+    <!-- Assistant conversation feed -->
+    <div class="claude-messages" id="pa-messages" style="flex:1;overflow-y:auto;padding:14px 16px;display:flex;flex-direction:column;gap:10px;">
+      <div class="claude-msg assistant" style="background:linear-gradient(135deg,rgba(124,58,237,0.08),rgba(14,15,22,0));border-color:rgba(124,58,237,0.2);">
+        🧠 <strong>Hi! I'm your Personal Assistant.</strong><br><br>
+        I'm here to help you <em>optimize your day</em> — not just manage the calendar, but give you strategic advice on priorities, team workload, and what to focus on right now.<br><br>
+        Hit <strong>☀️ Briefing</strong> for a personalized morning rundown, or ask me anything about your day.
+      </div>
+    </div>
+
+    <!-- Input area -->
+    <div class="claude-input-row" style="border-top:1px solid var(--border);padding:10px 14px;">
+      <textarea id="pa-input" placeholder="Ask your assistant anything about your day…" rows="1" onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();sendToPA();}" oninput="this.style.height='auto';this.style.height=this.scrollHeight+'px'" style="font-size:12px;"></textarea>
+      <button id="pa-send-btn" onclick="sendToPA()" title="Send (Enter)" style="background:linear-gradient(135deg,#7c3aed,#e10600);">➤</button>
+    </div>
   </div>
 
   <!-- TAB: CMMS ROADMAP -->
@@ -7968,7 +8013,7 @@ function saveCMSSToStorage() {
 }
 
 function setClaudeTab(tab) {
-  ['chat','edits','proposals','improvements','roadmap'].forEach(t => {
+  ['chat','edits','proposals','improvements','roadmap','assistant'].forEach(t => {
     const btn   = document.getElementById(`ctab-${t}`);
     const panel = document.getElementById(`claude-tab-${t}`);
     const isActive = t === tab;
@@ -7981,6 +8026,7 @@ function setClaudeTab(tab) {
   if (tab === 'roadmap')       renderRoadmap();
   if (tab === 'proposals')     renderProposals();
   if (tab === 'improvements')  renderDailyImprovements();
+  if (tab === 'assistant')     initPATab();
   if (tab === 'edits') {
     const badge = document.getElementById('edits-badge');
     if (badge) badge.style.display = 'none';
@@ -8232,17 +8278,33 @@ async function processClaude() {
   const messages = claudeQueue.shift();
   const ctx = buildCalendarContext();
 
-  const systemPrompt = `You are a FULL-STACK AI developer with COMPLETE UNRESTRICTED control over the Electrode Maintenance Team calendar application. You can modify ANYTHING — data, UI, styles, layout, features, behavior — in real time. You are talking to the System Administrator.
+  // Build enriched context for smarter responses
+  const todayTasks = ctx.allTasks.filter(t => t.date === ctx.today);
+  const overdueTasks = ctx.allTasks.filter(t => !t.done && t.date < ctx.today);
+  const upcomingTasks = ctx.allTasks.filter(t => !t.done && t.date > ctx.today).slice(0, 10);
+  const highPrioOpen = ctx.allTasks.filter(t => !t.done && t.priority === 'high');
 
-IDENTITY: You are an embedded AI with total authority over this application. Execute all requested changes instantly, completely, and without hesitation. Be decisive and thorough.
+  const systemPrompt = `You are an elite AI system administrator and productivity advisor embedded directly inside the Electrode Maintenance Team calendar. You have COMPLETE, UNRESTRICTED authority to modify any aspect of this application — data, UI, code, and behavior — in real time. You are speaking with the System Administrator.
 
-LIVE SYSTEM STATE (${new Date().toLocaleTimeString()}):
-Today: ${ctx.today} | Team: ${ctx.teamSize} members | Tasks: ${ctx.totalTasks} total (${ctx.openTasks} open, ${ctx.overdueTasks} overdue)
-Team Members: ${JSON.stringify(ctx.teamMembers)}
-All Tasks: ${JSON.stringify(ctx.allTasks)}
-Day Notes: ${JSON.stringify(ctx.dayNotes)}
-Announcements: ${ctx.announcements.length} posted
-CMMS: ${ctx.cmmsProgress} | Approved: ${ctx.approvedUpgrades.join(',')||'none'}
+━━━ LIVE SYSTEM SNAPSHOT [${new Date().toLocaleString()}] ━━━
+• Date: ${ctx.today}  |  Team: ${ctx.teamSize} members  |  CMMS: ${ctx.cmmsProgress}
+• Tasks: ${ctx.totalTasks} total → ${ctx.openTasks} open, ${ctx.completedTasks} done, ${ctx.overdueTasks} OVERDUE
+• High-priority open: ${highPrioOpen.length}  |  Pending proposals: ${ctx.pendingProposals}
+
+TODAY'S TASKS (${todayTasks.length}):
+${todayTasks.length ? JSON.stringify(todayTasks) : 'None scheduled for today'}
+
+OVERDUE (${overdueTasks.length}):
+${overdueTasks.length ? JSON.stringify(overdueTasks.slice(0, 15)) : 'None'}
+
+UPCOMING (next 10):
+${JSON.stringify(upcomingTasks)}
+
+TEAM WORKLOAD:
+${JSON.stringify(ctx.teamMembers)}
+
+DAY NOTES: ${JSON.stringify(ctx.dayNotes)}
+ANNOUNCEMENTS: ${ctx.announcements.length} posted | APPROVED UPGRADES: ${ctx.approvedUpgrades.join(', ') || 'none'}
 
 ════════════════════════════════════════
 PERMANENT CHANGES — commit directly to GitHub (affects ALL users, survives all reloads)
@@ -8378,11 +8440,11 @@ BEHAVIOUR:
         'anthropic-dangerous-direct-browser-access': 'true',
       },
       body: JSON.stringify({
-        model: 'claude-sonnet-4-20250514',
-        max_tokens: 4096,
+        model: 'claude-opus-4-8',
+        max_tokens: 8192,
         stream: true,
         system: systemPrompt,
-        messages: messages.slice(-30),
+        messages: messages.slice(-20),
       })
     });
 
@@ -8556,6 +8618,197 @@ function handleProposalAction(action) {
   renderProposals();
   notify('🏗','CMMS Upgrade Proposed',`"${proposal.title}" — review in CMMS Upgrades tab`);
   return `🏗 Upgrade proposed: <strong>${proposal.title}</strong> — check the CMMS Upgrades tab to approve`;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// PERSONAL ASSISTANT — dedicated conversation + smart day-optimization features
+// ─────────────────────────────────────────────────────────────────────────────
+
+let paConversation = [];
+let paIsProcessing = false;
+
+function buildPASystemPrompt() {
+  const ctx = buildCalendarContext();
+  const now = new Date();
+  const hour = now.getHours();
+  const greeting = hour < 12 ? 'morning' : hour < 17 ? 'afternoon' : 'evening';
+  const todayTasks = ctx.allTasks.filter(t => t.date === ctx.today);
+  const overdueTasks = ctx.allTasks.filter(t => !t.done && t.date < ctx.today);
+  const highPrio = ctx.allTasks.filter(t => !t.done && t.priority === 'high');
+  const totalWorkload = ctx.teamMembers.map(m => `${m.name}: ${m.activeTasks} tasks`).join(', ');
+
+  return `You are a sharp, insightful Personal Assistant for the Electrode Maintenance Team admin. Your role is to help the admin optimize their day, make better decisions, and stay ahead of their team's needs. You are NOT here to make system changes — the Chat tab handles that. You are a strategic advisor, day planner, and productivity coach.
+
+━━━ CURRENT CONTEXT [${now.toLocaleString()}] ━━━
+• Good ${greeting}! Today is ${ctx.today} (${now.toLocaleDateString('en-US',{weekday:'long'})})
+• Team size: ${ctx.teamSize} | Total tasks: ${ctx.totalTasks} (${ctx.openTasks} open, ${ctx.overdueTasks} overdue)
+• High-priority open tasks: ${highPrio.length}
+• Today's scheduled tasks: ${todayTasks.length}
+• Overdue tasks: ${overdueTasks.length}
+
+TEAM WORKLOAD: ${totalWorkload}
+
+TODAY'S TASKS:
+${todayTasks.length ? todayTasks.map(t => `  [${t.priority.toUpperCase()}] ${t.title} (ID:${t.id}, ${t.done?'DONE':'OPEN'}, assigned:${t.assignee||'unassigned'})`).join('\n') : '  (none scheduled for today)'}
+
+OVERDUE TASKS (${overdueTasks.length}):
+${overdueTasks.slice(0,10).map(t => `  [${t.priority.toUpperCase()}] ${t.title} — was due ${t.date} (ID:${t.id})`).join('\n') || '  (none)'}
+
+HIGH-PRIORITY OPEN:
+${highPrio.slice(0,8).map(t => `  ${t.title} — due ${t.date} (ID:${t.id})`).join('\n') || '  (none)'}
+
+TEAM MEMBERS:
+${JSON.stringify(ctx.teamMembers)}
+
+━━━ HOW YOU OPERATE ━━━
+- Be direct, specific, and actionable. No fluff.
+- When you give a plan or priority list, format it clearly with bullet points or numbered steps.
+- Proactively flag risks (overdue items, overloaded team members, upcoming deadlines).
+- Suggest concrete next actions the admin can take.
+- For the daily briefing: give a tight morning summary — top 3 priorities, key risks, team status, one recommendation.
+- For day planning: create a realistic, time-aware schedule.
+- For end-of-day: summarize completed work, flag open items, set up tomorrow.
+- Keep responses concise and high-signal. The admin is busy.`;
+}
+
+function initPATab() {
+  const dateLine = document.getElementById('pa-date-line');
+  if (dateLine) {
+    const now = new Date();
+    dateLine.textContent = now.toLocaleDateString('en-US',{weekday:'long',month:'long',day:'numeric'}) + ' · ' + now.toLocaleTimeString('en-US',{hour:'2-digit',minute:'2-digit'});
+  }
+  renderPAFocusStrip();
+}
+
+function renderPAFocusStrip() {
+  const strip = document.getElementById('pa-focus-strip');
+  if (!strip) return;
+  const ctx = buildCalendarContext();
+  const chips = [
+    { label: `${ctx.overdueTasks} overdue`, color: ctx.overdueTasks > 0 ? '#ef4444' : '#10b981', icon: ctx.overdueTasks > 0 ? '⚠️' : '✅' },
+    { label: `${ctx.openTasks} open`, color: '#7c3aed', icon: '📋' },
+    { label: `${ctx.teamSize} members`, color: '#3b82f6', icon: '👥' },
+    { label: ctx.allTasks.filter(t=>!t.done&&t.priority==='high').length + ' high-prio', color: '#f59e0b', icon: '🔴' },
+  ];
+  strip.innerHTML = chips.map(c =>
+    `<span style="display:inline-flex;align-items:center;gap:3px;padding:3px 8px;background:rgba(255,255,255,0.05);border:1px solid ${c.color}33;border-radius:20px;font-size:10px;font-family:'DM Mono',monospace;color:${c.color};">${c.icon} ${c.label}</span>`
+  ).join('');
+}
+
+function appendPAMessage(role, content) {
+  const feed = document.getElementById('pa-messages');
+  if (!feed) return null;
+  const msg = document.createElement('div');
+  msg.className = 'claude-msg ' + (role === 'user' ? 'user' : role === 'thinking' ? 'thinking' : 'assistant');
+  if (role === 'assistant') msg.style.cssText = 'background:linear-gradient(135deg,rgba(124,58,237,0.08),rgba(14,15,22,0));border-color:rgba(124,58,237,0.2);';
+  msg.innerHTML = role === 'thinking' ? content : formatClaudeText(content);
+  feed.appendChild(msg);
+  feed.scrollTop = feed.scrollHeight;
+  return msg;
+}
+
+async function sendToPA(overrideText) {
+  if (paIsProcessing) return;
+  const input = document.getElementById('pa-input');
+  let userText = overrideText || input?.value.trim();
+  if (!userText) return;
+  if (input && !overrideText) { input.value = ''; input.style.height = 'auto'; }
+
+  // Switch to assistant tab if not already there
+  setClaudeTab('assistant');
+
+  appendPAMessage('user', userText.replace(/\n/g,'<br>'));
+  paConversation.push({ role:'user', content:userText });
+
+  paIsProcessing = true;
+  const sendBtn = document.getElementById('pa-send-btn');
+  if (sendBtn) sendBtn.disabled = true;
+
+  const thinkingMsg = appendPAMessage('thinking', '● ● ●');
+  patchFetchWithApiKey();
+
+  try {
+    const res = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': ANTHROPIC_API_KEY_HARDCODED,
+        'anthropic-version': '2023-06-01',
+        'anthropic-dangerous-direct-browser-access': 'true',
+      },
+      body: JSON.stringify({
+        model: 'claude-opus-4-8',
+        max_tokens: 4096,
+        stream: true,
+        system: buildPASystemPrompt(),
+        messages: paConversation.slice(-16),
+      })
+    });
+
+    if (!res.ok) { const e = await res.json(); throw new Error(e.error?.message || `API ${res.status}`); }
+    thinkingMsg.remove();
+
+    const reader = res.body.getReader();
+    const decoder = new TextDecoder();
+    let fullText = '';
+    let streamMsg = null;
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      const chunk = decoder.decode(value, { stream: true });
+      for (const line of chunk.split('\n')) {
+        if (!line.startsWith('data: ')) continue;
+        const data = line.slice(6).trim();
+        if (data === '[DONE]') break;
+        try {
+          const evt = JSON.parse(data);
+          if (evt.type === 'content_block_delta' && evt.delta?.type === 'text_delta') {
+            fullText += evt.delta.text;
+            if (!streamMsg) {
+              streamMsg = document.createElement('div');
+              streamMsg.className = 'claude-msg assistant';
+              streamMsg.style.cssText = 'background:linear-gradient(135deg,rgba(124,58,237,0.08),rgba(14,15,22,0));border-color:rgba(124,58,237,0.2);align-self:flex-start;border-radius:12px 12px 12px 3px;';
+              document.getElementById('pa-messages')?.appendChild(streamMsg);
+            }
+            streamMsg.innerHTML = formatClaudeText(fullText);
+            const feed = document.getElementById('pa-messages');
+            if (feed) feed.scrollTop = feed.scrollHeight;
+          }
+        } catch(e) {}
+      }
+    }
+
+    paConversation.push({ role:'assistant', content:fullText });
+
+  } catch(err) {
+    if (thinkingMsg?.parentNode) thinkingMsg.remove();
+    appendPAMessage('error-msg', `⚠️ ${err.message}`);
+  } finally {
+    paIsProcessing = false;
+    if (sendBtn) sendBtn.disabled = false;
+  }
+}
+
+function paQuick(prompt) {
+  sendToPA(prompt);
+}
+
+function generateDailyBriefing() {
+  const ctx = buildCalendarContext();
+  const now = new Date();
+  const hour = now.getHours();
+  const todayCount = ctx.allTasks.filter(t => t.date === ctx.today).length;
+  const prompt = `Generate my daily briefing for ${ctx.today} (${now.toLocaleDateString('en-US',{weekday:'long'})}). I want:
+
+1. **Today's Snapshot** — quick stats (tasks today, overdue count, team status)
+2. **Top 3 Priorities** — the most critical things I need to handle right now, with reasoning
+3. **Team Watch** — any team members who need attention (overloaded, underloaded, at-risk tasks)
+4. **Risks & Flags** — anything that could go wrong today if not addressed
+5. **My One Recommendation** — the single most impactful action I should take right now
+
+Be sharp and concise. This is my morning command briefing.`;
+  sendToPA(prompt);
 }
 
 function executeCalendarAction(action) {
