@@ -3335,6 +3335,10 @@
       <span id="improvements-badge" style="display:none;position:absolute;top:4px;right:4px;background:#f59e0b;color:#fff;border-radius:50%;width:14px;height:14px;font-size:8px;font-family:'DM Mono',monospace;font-weight:700;align-items:center;justify-content:center;">1</span>
     </button>
     <button class="claude-tab" id="ctab-roadmap" onclick="setClaudeTab('roadmap')" style="flex:1;padding:8px 0;font-size:10px;font-family:'DM Sans',sans-serif;font-weight:500;background:none;border:none;cursor:pointer;color:var(--text2);border-bottom:2px solid transparent;transition:all 0.15s;">🗺 Map</button>
+    <button class="claude-tab" id="ctab-assistant" onclick="setClaudeTab('assistant')" style="flex:1;padding:8px 0;font-size:10px;font-family:'DM Sans',sans-serif;font-weight:500;background:none;border:none;cursor:pointer;color:var(--text2);border-bottom:2px solid transparent;transition:all 0.15s;position:relative;">
+      🧠 Me
+      <span id="assistant-badge" style="display:none;position:absolute;top:4px;right:2px;background:#7c3aed;color:#fff;border-radius:50%;width:14px;height:14px;font-size:8px;font-family:'DM Mono',monospace;font-weight:700;align-items:center;justify-content:center;"></span>
+    </button>
   </div>
 
   <!-- TAB: CHAT -->
@@ -3408,6 +3412,77 @@
       <div id="daily-improve-status" style="font-size:10px;color:var(--text3);font-family:'DM Mono',monospace;"></div>
     </div>
     <div id="daily-improvements-list" style="flex:1;overflow-y:auto;padding:12px 14px;"></div>
+  </div>
+
+  <!-- TAB: PERSONAL ASSISTANT -->
+  <div id="claude-tab-assistant" style="display:none;flex-direction:column;flex:1;overflow:hidden;position:relative;">
+    <!-- Briefing header -->
+    <div style="padding:12px 14px 10px;border-bottom:1px solid var(--border);flex-shrink:0;background:linear-gradient(135deg,rgba(124,58,237,0.08),rgba(225,6,0,0.05));">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
+        <div>
+          <div style="font-size:13px;font-weight:600;color:var(--text);">🧠 Personal Assistant</div>
+          <div id="pa-date-line" style="font-size:10px;color:var(--text3);font-family:'DM Mono',monospace;margin-top:2px;"></div>
+          <div id="pa-memory-status" style="font-size:9px;color:#7c3aed;font-family:'DM Mono',monospace;margin-top:2px;opacity:0.85;">🧠 Memory initializing…</div>
+          <div id="pa-sync-status" style="font-size:9px;color:var(--text3);font-family:'DM Mono',monospace;margin-top:1px;">↻ Initializing…</div>
+        </div>
+        <div style="display:flex;gap:5px;align-items:center;">
+          <div id="pa-health-dot" title="System health" style="width:8px;height:8px;border-radius:50%;background:#6b7280;flex-shrink:0;cursor:pointer;" onclick="showHealthPanel()"></div>
+          <button onclick="showPAMemoryPanel()" class="btn btn-ghost" style="font-size:10px;padding:4px 9px;color:#7c3aed;border-color:rgba(124,58,237,0.3);" title="Show learned profile">📊</button>
+          <button onclick="toggleCustomInstructions()" class="btn btn-ghost" style="font-size:10px;padding:4px 9px;" title="Custom instructions">⚙️</button>
+          <button onclick="generateDailyBriefing()" id="pa-briefing-btn" class="btn btn-primary" style="font-size:11px;padding:5px 12px;gap:4px;background:linear-gradient(135deg,#7c3aed,#e10600);">☀️ Briefing</button>
+        </div>
+      </div>
+      <!-- Focus mode quick stats -->
+      <div id="pa-focus-strip" style="display:flex;gap:6px;flex-wrap:wrap;"></div>
+    </div>
+
+    <!-- Custom instructions (hidden by default, toggled) -->
+    <div id="pa-custom-instr-wrap" style="display:none;padding:8px 14px 10px;border-bottom:1px solid var(--border);flex-shrink:0;background:rgba(124,58,237,0.05);">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:5px;">
+        <div style="font-size:10px;font-weight:600;color:#7c3aed;">⚙️ Custom Instructions</div>
+        <div id="pa-improve-badge" style="font-size:9px;color:var(--text3);font-family:'DM Mono',monospace;"></div>
+      </div>
+      <textarea id="pa-custom-instr" placeholder="e.g. Always respond in bullet points. Prioritise safety tasks. Keep answers under 150 words." rows="2" oninput="saveCustomInstructions()" style="width:100%;background:var(--surface2);border:1px solid rgba(124,58,237,0.3);border-radius:6px;padding:6px 8px;font-size:11px;color:var(--text);font-family:'DM Sans',sans-serif;resize:vertical;box-sizing:border-box;outline:none;"></textarea>
+    </div>
+
+    <!-- Dynamic quick action buttons (rendered by JS) -->
+    <div id="pa-quick-actions-bar" style="padding:8px 14px;border-bottom:1px solid var(--border);display:flex;gap:5px;flex-wrap:wrap;flex-shrink:0;background:var(--surface);"></div>
+
+    <!-- Connections drawer (collapsed by default) -->
+    <div id="pa-connections-drawer" style="display:none;flex-direction:column;border-bottom:1px solid var(--border);background:rgba(14,15,22,0.6);flex-shrink:0;max-height:260px;overflow-y:auto;">
+      <div style="display:flex;align-items:center;justify-content:space-between;padding:8px 14px 4px;flex-shrink:0;">
+        <span style="font-size:11px;font-weight:600;color:var(--text);">Connected Services</span>
+        <div style="display:flex;gap:5px;">
+          <button onclick="syncAllConnections(true)" class="btn btn-ghost" style="font-size:10px;padding:3px 8px;gap:3px;">↻ Sync All</button>
+          <button onclick="toggleConnectionsDrawer()" class="btn btn-ghost" style="font-size:10px;padding:3px 8px;">✕</button>
+        </div>
+      </div>
+      <div id="pa-connections-list" style="padding:4px 14px 10px;display:flex;flex-direction:column;gap:6px;"></div>
+    </div>
+
+    <!-- Connection setup overlay (shown inside PA tab) -->
+    <div id="pa-conn-setup-overlay" style="display:none;position:absolute;inset:0;background:rgba(14,15,22,0.95);z-index:10;flex-direction:column;padding:20px;gap:12px;overflow-y:auto;">
+      <div style="display:flex;align-items:center;justify-content:space-between;">
+        <div id="pa-conn-setup-title" style="font-size:14px;font-weight:600;color:var(--text);"></div>
+        <button onclick="closeConnectionSetup()" style="background:none;border:none;color:var(--text3);cursor:pointer;font-size:18px;">×</button>
+      </div>
+      <div id="pa-conn-setup-body" style="flex:1;"></div>
+    </div>
+
+    <!-- Assistant conversation feed -->
+    <div class="claude-messages" id="pa-messages" style="flex:1;overflow-y:auto;padding:14px 16px;display:flex;flex-direction:column;gap:10px;">
+      <div class="claude-msg assistant" style="background:linear-gradient(135deg,rgba(124,58,237,0.08),rgba(14,15,22,0));border-color:rgba(124,58,237,0.2);">
+        🧠 <strong>Hi! I'm your Personal Assistant.</strong><br><br>
+        I'm here to help you <em>optimize your day</em> — not just manage the calendar, but give you strategic advice on priorities, team workload, and what to focus on right now.<br><br>
+        Hit <strong>☀️ Briefing</strong> for a personalized morning rundown, tap <strong>⚡ Connections</strong> to link your email, calendar, and files, or ask me anything.
+      </div>
+    </div>
+
+    <!-- Input area -->
+    <div class="claude-input-row" style="border-top:1px solid var(--border);padding:10px 14px;">
+      <textarea id="pa-input" placeholder="Ask your assistant anything about your day…" rows="1" onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();sendToPA();}" oninput="this.style.height='auto';this.style.height=this.scrollHeight+'px'" style="font-size:12px;"></textarea>
+      <button id="pa-send-btn" onclick="sendToPA()" title="Send (Enter)" style="background:linear-gradient(135deg,#7c3aed,#e10600);">➤</button>
+    </div>
   </div>
 
   <!-- TAB: CMMS ROADMAP -->
@@ -3741,6 +3816,7 @@ function init() {
   loadFilesFromStorage();
   loadHistory();
   loadDailyImprovements();
+  loadPAMemory();
 
   // 2. Check if page was opened via an invite link (?invite=CODE)
   const urlParams = new URLSearchParams(window.location.search);
@@ -7823,6 +7899,7 @@ function logLiveEdit(icon, text) {
   const now = new Date();
   const time = now.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
   liveEditLog.unshift({ icon, text, time });
+  paLogEdit(icon, text);
 
   const logEl = document.getElementById('live-edits-log');
   const emptyEl = document.getElementById('live-edits-empty');
@@ -7968,7 +8045,7 @@ function saveCMSSToStorage() {
 }
 
 function setClaudeTab(tab) {
-  ['chat','edits','proposals','improvements','roadmap'].forEach(t => {
+  ['chat','edits','proposals','improvements','roadmap','assistant'].forEach(t => {
     const btn   = document.getElementById(`ctab-${t}`);
     const panel = document.getElementById(`claude-tab-${t}`);
     const isActive = t === tab;
@@ -7981,6 +8058,7 @@ function setClaudeTab(tab) {
   if (tab === 'roadmap')       renderRoadmap();
   if (tab === 'proposals')     renderProposals();
   if (tab === 'improvements')  renderDailyImprovements();
+  if (tab === 'assistant')     initPATab();
   if (tab === 'edits') {
     const badge = document.getElementById('edits-badge');
     if (badge) badge.style.display = 'none';
@@ -8207,6 +8285,7 @@ async function sendToClaudeAI(skipInputRead = false) {
     if (input) { input.value = ''; input.style.height = 'auto'; }
     appendClaudeMessage('user', userText.replace(/\n/g,'<br>'));
     claudeConversation.push({ role:'user', content:userText });
+    paLogCommand(userText, 'chat');
   }
   // Queue this call and process
   claudeQueue.push([...claudeConversation]);
@@ -8232,17 +8311,33 @@ async function processClaude() {
   const messages = claudeQueue.shift();
   const ctx = buildCalendarContext();
 
-  const systemPrompt = `You are a FULL-STACK AI developer with COMPLETE UNRESTRICTED control over the Electrode Maintenance Team calendar application. You can modify ANYTHING — data, UI, styles, layout, features, behavior — in real time. You are talking to the System Administrator.
+  // Build enriched context for smarter responses
+  const todayTasks = ctx.allTasks.filter(t => t.date === ctx.today);
+  const overdueTasks = ctx.allTasks.filter(t => !t.done && t.date < ctx.today);
+  const upcomingTasks = ctx.allTasks.filter(t => !t.done && t.date > ctx.today).slice(0, 10);
+  const highPrioOpen = ctx.allTasks.filter(t => !t.done && t.priority === 'high');
 
-IDENTITY: You are an embedded AI with total authority over this application. Execute all requested changes instantly, completely, and without hesitation. Be decisive and thorough.
+  const systemPrompt = `You are an elite AI system administrator and productivity advisor embedded directly inside the Electrode Maintenance Team calendar. You have COMPLETE, UNRESTRICTED authority to modify any aspect of this application — data, UI, code, and behavior — in real time. You are speaking with the System Administrator.
 
-LIVE SYSTEM STATE (${new Date().toLocaleTimeString()}):
-Today: ${ctx.today} | Team: ${ctx.teamSize} members | Tasks: ${ctx.totalTasks} total (${ctx.openTasks} open, ${ctx.overdueTasks} overdue)
-Team Members: ${JSON.stringify(ctx.teamMembers)}
-All Tasks: ${JSON.stringify(ctx.allTasks)}
-Day Notes: ${JSON.stringify(ctx.dayNotes)}
-Announcements: ${ctx.announcements.length} posted
-CMMS: ${ctx.cmmsProgress} | Approved: ${ctx.approvedUpgrades.join(',')||'none'}
+━━━ LIVE SYSTEM SNAPSHOT [${new Date().toLocaleString()}] ━━━
+• Date: ${ctx.today}  |  Team: ${ctx.teamSize} members  |  CMMS: ${ctx.cmmsProgress}
+• Tasks: ${ctx.totalTasks} total → ${ctx.openTasks} open, ${ctx.completedTasks} done, ${ctx.overdueTasks} OVERDUE
+• High-priority open: ${highPrioOpen.length}  |  Pending proposals: ${ctx.pendingProposals}
+
+TODAY'S TASKS (${todayTasks.length}):
+${todayTasks.length ? JSON.stringify(todayTasks) : 'None scheduled for today'}
+
+OVERDUE (${overdueTasks.length}):
+${overdueTasks.length ? JSON.stringify(overdueTasks.slice(0, 15)) : 'None'}
+
+UPCOMING (next 10):
+${JSON.stringify(upcomingTasks)}
+
+TEAM WORKLOAD:
+${JSON.stringify(ctx.teamMembers)}
+
+DAY NOTES: ${JSON.stringify(ctx.dayNotes)}
+ANNOUNCEMENTS: ${ctx.announcements.length} posted | APPROVED UPGRADES: ${ctx.approvedUpgrades.join(', ') || 'none'}
 
 ════════════════════════════════════════
 PERMANENT CHANGES — commit directly to GitHub (affects ALL users, survives all reloads)
@@ -8378,11 +8473,11 @@ BEHAVIOUR:
         'anthropic-dangerous-direct-browser-access': 'true',
       },
       body: JSON.stringify({
-        model: 'claude-sonnet-4-20250514',
-        max_tokens: 4096,
+        model: 'claude-opus-4-8',
+        max_tokens: 8192,
         stream: true,
         system: systemPrompt,
-        messages: messages.slice(-30),
+        messages: messages.slice(-20),
       })
     });
 
@@ -8558,7 +8653,1739 @@ function handleProposalAction(action) {
   return `🏗 Upgrade proposed: <strong>${proposal.title}</strong> — check the CMMS Upgrades tab to approve`;
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// PERSONAL ASSISTANT — dedicated conversation + smart day-optimization features
+// ─────────────────────────────────────────────────────────────────────────────
+
+let paConversation = [];
+let paIsProcessing = false;
+
+function buildPASystemPrompt() {
+  const ctx = buildCalendarContext();
+  const now = new Date();
+  const hour = now.getHours();
+  const greeting = hour < 12 ? 'morning' : hour < 17 ? 'afternoon' : 'evening';
+  const todayTasks    = ctx.allTasks.filter(t => t.date === ctx.today);
+  const overdueTasks  = ctx.allTasks.filter(t => !t.done && t.date < ctx.today);
+  const highPrio      = ctx.allTasks.filter(t => !t.done && t.priority === 'high');
+  const totalWorkload = ctx.teamMembers.map(m => `${m.name}: ${m.activeTasks} tasks`).join(', ');
+
+  // ── All-access artifacts ──────────────────────────────────────────────────
+  // Recent admin chat history (last 12 exchanges from the Chat tab)
+  const recentAdminChat = claudeConversation.slice(-12).map(m =>
+    `[${m.role.toUpperCase()}]: ${m.content.substring(0, 250)}`
+  ).join('\n');
+
+  // Task notes (all annotations added to tasks)
+  const taskNoteEntries = Object.entries(taskNotes).map(([taskId, notes]) => {
+    const task = tasks.find(t => String(t.id) === String(taskId));
+    const label = task ? `${task.taskNum}: ${task.title}` : `Task #${taskId}`;
+    const noteList = Array.isArray(notes) ? notes.map(n => n.text||n).join(' | ') : String(notes);
+    return `  ${label} → ${noteList.substring(0, 150)}`;
+  }).join('\n');
+
+  // All announcements
+  const allAnnouncements = announcements.slice(0, 10).map(a =>
+    `  [${a.type?.toUpperCase()||'INFO'}${a.pinned?' PINNED':''}] ${a.title}: ${(a.body||'').substring(0,100)}`
+  ).join('\n');
+
+  // Files in the system
+  const fileList = (filesData?.folders || []).flatMap(f => (f.files||[]).map(fi =>
+    `  ${f.name}/${fi.name} (${fi.size ? Math.round(fi.size/1024)+'KB' : '?'}) — ${fi.uploadedAt||''}`
+  )).slice(0, 20).join('\n');
+
+  // Session history (login/activity dates)
+  const sessionHistory = (() => {
+    try {
+      const raw = localStorage.getItem('emt_session_history');
+      if (!raw) return '(none)';
+      return JSON.parse(raw).slice(0,8).map(s => `  ${s.type} — ${new Date(s.timestamp).toLocaleString()}`).join('\n');
+    } catch(e) { return '(unavailable)'; }
+  })();
+
+  // CMMS approved upgrades detail
+  const approvedDetail = approvedUpgrades.length
+    ? approvedUpgrades.join(', ')
+    : 'none';
+
+  return `You are a sharp, insightful Personal Assistant for the Electrode Maintenance Team admin. You have FULL ACCESS to all system data: every task, note, chat, announcement, file, session, code change, and action ever recorded. Use this complete picture to give the most accurate, personalized advice possible. You do NOT make system changes (that is the Chat tab's role) — you are a strategic advisor, day planner, and productivity coach.
+
+━━━ LIVE SNAPSHOT [${now.toLocaleString()}] ━━━
+Good ${greeting}! Today: ${ctx.today} (${now.toLocaleDateString('en-US',{weekday:'long'})})
+Team: ${ctx.teamSize} members · Tasks: ${ctx.totalTasks} total · ${ctx.openTasks} open · ${ctx.overdueTasks} OVERDUE
+High-priority open: ${highPrio.length} · Today's tasks: ${todayTasks.length}
+CMMS: ${ctx.cmmsProgress} · Approved upgrades: ${approvedDetail}
+
+━━━ ALL TASKS (${ctx.totalTasks}) ━━━
+${JSON.stringify(ctx.allTasks)}
+
+━━━ TODAY'S TASKS (${todayTasks.length}) ━━━
+${todayTasks.length ? todayTasks.map(t => `  [${t.priority.toUpperCase()}] ${t.title} · ID:${t.id} · ${t.done?'DONE':'OPEN'} · assigned:${t.assignee||'unassigned'}`).join('\n') : '  (none today)'}
+
+━━━ OVERDUE (${overdueTasks.length}) ━━━
+${overdueTasks.slice(0,15).map(t => `  [${t.priority.toUpperCase()}] ${t.title} — due ${t.date} · ID:${t.id}`).join('\n') || '  (none)'}
+
+━━━ TEAM WORKLOAD ━━━
+${JSON.stringify(ctx.teamMembers)}
+
+━━━ DAY NOTES ━━━
+${Object.entries(ctx.dayNotes||{}).slice(-14).map(([d,n])=>`  ${d}: ${String(n).substring(0,120)}`).join('\n')||'  (none)'}
+
+━━━ TASK NOTES ━━━
+${taskNoteEntries || '  (none)'}
+
+━━━ ANNOUNCEMENTS (${announcements.length} total) ━━━
+${allAnnouncements || '  (none)'}
+
+━━━ SHARED FILES ━━━
+${fileList || '  (none)'}
+
+━━━ RECENT ADMIN CHAT HISTORY ━━━
+${recentAdminChat || '  (no recent chat)'}
+
+━━━ SESSION HISTORY ━━━
+${sessionHistory}
+
+${getExternalDataContext()}
+
+━━━ PA ACTIONS (you can trigger these when needed) ━━━
+When you need to fetch live data or create content, emit ONE of these action blocks:
+
+\`\`\`pa-action
+{"type":"PA_SYNC","service":"ms365|gmail|gdrive|slack|github"}
+\`\`\`
+\`\`\`pa-action
+{"type":"PA_SEARCH_EMAILS","service":"ms365|gmail","query":"search term"}
+\`\`\`
+\`\`\`pa-action
+{"type":"PA_LIST_FILES","service":"gdrive|ms365","folder":"optional folder name"}
+\`\`\`
+\`\`\`pa-action
+{"type":"PA_DRAFT_EMAIL","service":"gmail|ms365","to":"email","subject":"...","body":"..."}
+\`\`\`
+Only emit actions when the user asks you to fetch, search, or draft. Otherwise, use the cached data already in context.
+
+━━━ SELF-IMPROVEMENT LAYER ━━━
+Feedback-derived style: ${getDerivedStyle()} · ${paPreferences.improvementCount} improvements applied · ${paPreferences.feedbackLog.filter(f=>f.rating>0).length} positive / ${paPreferences.feedbackLog.filter(f=>f.rating<0).length} negative ratings
+${paPreferences.customInstructions ? `Admin custom instructions (MUST follow): ${paPreferences.customInstructions}` : ''}${getAutoImprovementsText()}
+
+━━━ HOW YOU OPERATE ━━━
+- Be direct, specific, and actionable. No fluff.
+- Use ALL the context above — cross-reference tasks, notes, chat history, files, and external service data.
+- Proactively surface risks: overdue items, overloaded members, upcoming deadlines, stale announcements.
+- When you spot recurring patterns (same tasks, same questions, same problems), call them out explicitly.
+- For daily briefing: tight command summary — top 3 priorities, team risks, one recommendation.
+- For day planning: realistic, time-aware schedule using actual task data.
+- For end-of-day: what was done, what is open, what to tackle tomorrow.
+- Match the response style to the feedback-derived preference above.
+- If custom instructions exist, they override everything else.
+- USE the learned profile below — reference what you've noticed, anticipate needs, personalise every response.
+
+${getLearnedContext()}`;
+}
+
+function initPATab() {
+  const dateLine = document.getElementById('pa-date-line');
+  if (dateLine) {
+    const now = new Date();
+    dateLine.textContent = now.toLocaleDateString('en-US',{weekday:'long',month:'long',day:'numeric'}) + ' · ' + now.toLocaleTimeString('en-US',{hour:'2-digit',minute:'2-digit'});
+  }
+  renderPAFocusStrip();
+  updatePAMemoryStatus();
+  updateSyncStatusLabel();
+  updateHealthDot();
+  renderDynamicQuickActions();
+  renderConnectionsList();
+  // Restore custom instructions
+  const ta = document.getElementById('pa-custom-instr');
+  if (ta && paPreferences.customInstructions) ta.value = paPreferences.customInstructions;
+  updateImprovementBadge();
+  // Silently refresh any stale connected services
+  const stale = Object.keys(paConnections).filter(k => {
+    const c = paConnections[k];
+    if (!c.enabled || isCircuitOpen(k)) return false;
+    const interval = PA_SYNC_INTERVALS[k] || 15 * 60 * 1000;
+    return !c.lastSync || (Date.now() - new Date(c.lastSync).getTime()) > interval;
+  });
+  if (stale.length) {
+    Promise.allSettled(stale.map(k => syncService(k).then(() => {
+      recordCircuitSuccess(k); paHealthStatus[k] = 'ok';
+    }).catch(() => {
+      recordCircuitFailure(k); paHealthStatus[k] = 'error';
+    }))).then(() => { renderConnectionsList(); updateHealthDot(); updateSyncStatusLabel(); });
+  }
+}
+
+function renderPAFocusStrip() {
+  const strip = document.getElementById('pa-focus-strip');
+  if (!strip) return;
+  const ctx = buildCalendarContext();
+  const chips = [
+    { label: `${ctx.overdueTasks} overdue`, color: ctx.overdueTasks > 0 ? '#ef4444' : '#10b981', icon: ctx.overdueTasks > 0 ? '⚠️' : '✅' },
+    { label: `${ctx.openTasks} open`, color: '#7c3aed', icon: '📋' },
+    { label: `${ctx.teamSize} members`, color: '#3b82f6', icon: '👥' },
+    { label: ctx.allTasks.filter(t=>!t.done&&t.priority==='high').length + ' high-prio', color: '#f59e0b', icon: '🔴' },
+  ];
+  strip.innerHTML = chips.map(c =>
+    `<span style="display:inline-flex;align-items:center;gap:3px;padding:3px 8px;background:rgba(255,255,255,0.05);border:1px solid ${c.color}33;border-radius:20px;font-size:10px;font-family:'DM Mono',monospace;color:${c.color};">${c.icon} ${c.label}</span>`
+  ).join('');
+}
+
+let paMsgCounter = 0;
+
+function appendPAMessage(role, content) {
+  const feed = document.getElementById('pa-messages');
+  if (!feed) return null;
+  const msg = document.createElement('div');
+  const msgId = 'pamsg-' + (++paMsgCounter);
+  msg.id = msgId;
+  msg.className = 'claude-msg ' + (role === 'user' ? 'user' : role === 'thinking' ? 'thinking' : 'assistant');
+  if (role === 'assistant') msg.style.cssText = 'background:linear-gradient(135deg,rgba(124,58,237,0.08),rgba(14,15,22,0));border-color:rgba(124,58,237,0.2);';
+  msg.innerHTML = role === 'thinking' ? content : formatClaudeText(content);
+  // Add feedback row to assistant (non-thinking, non-error) messages
+  if (role === 'assistant') {
+    const fb = document.createElement('div');
+    fb.style.cssText = 'display:flex;gap:4px;margin-top:6px;opacity:0.5;transition:opacity 0.2s;';
+    fb.onmouseenter = () => fb.style.opacity = '1';
+    fb.onmouseleave = () => { if (!fb.dataset.rated) fb.style.opacity = '0.5'; };
+    fb.innerHTML = `
+      <button onclick="recordFeedback('${msgId}',1,this)" title="Helpful" style="background:none;border:1px solid var(--border);border-radius:12px;padding:1px 7px;font-size:10px;cursor:pointer;color:var(--text3);">👍</button>
+      <button onclick="recordFeedback('${msgId}',-1,this)" title="Not helpful" style="background:none;border:1px solid var(--border);border-radius:12px;padding:1px 7px;font-size:10px;cursor:pointer;color:var(--text3);">👎</button>
+      <span id="fb-label-${msgId}" style="font-size:9px;color:var(--text3);font-family:'DM Mono',monospace;align-self:center;"></span>`;
+    msg.appendChild(fb);
+  }
+  feed.appendChild(msg);
+  feed.scrollTop = feed.scrollHeight;
+  return msg;
+}
+
+async function sendToPA(overrideText) {
+  if (paIsProcessing) return;
+  const input = document.getElementById('pa-input');
+  let userText = overrideText || input?.value.trim();
+  if (!userText) return;
+  if (input && !overrideText) { input.value = ''; input.style.height = 'auto'; }
+
+  // Switch to assistant tab if not already there
+  setClaudeTab('assistant');
+
+  appendPAMessage('user', userText.replace(/\n/g,'<br>'));
+  paConversation.push({ role:'user', content:userText });
+  paLogCommand(userText, 'pa');
+
+  paIsProcessing = true;
+  const sendBtn = document.getElementById('pa-send-btn');
+  if (sendBtn) sendBtn.disabled = true;
+
+  const thinkingMsg = appendPAMessage('thinking', '● ● ●');
+  patchFetchWithApiKey();
+
+  try {
+    const res = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': ANTHROPIC_API_KEY_HARDCODED,
+        'anthropic-version': '2023-06-01',
+        'anthropic-dangerous-direct-browser-access': 'true',
+      },
+      body: JSON.stringify({
+        model: 'claude-opus-4-8',
+        max_tokens: 4096,
+        stream: true,
+        system: buildPASystemPrompt(),
+        messages: paConversation.slice(-16),
+      })
+    });
+
+    if (!res.ok) { const e = await res.json(); throw new Error(e.error?.message || `API ${res.status}`); }
+    thinkingMsg.remove();
+
+    const reader = res.body.getReader();
+    const decoder = new TextDecoder();
+    let fullText = '';
+    let streamMsg = null;
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      const chunk = decoder.decode(value, { stream: true });
+      for (const line of chunk.split('\n')) {
+        if (!line.startsWith('data: ')) continue;
+        const data = line.slice(6).trim();
+        if (data === '[DONE]') break;
+        try {
+          const evt = JSON.parse(data);
+          if (evt.type === 'content_block_delta' && evt.delta?.type === 'text_delta') {
+            fullText += evt.delta.text;
+            if (!streamMsg) {
+              streamMsg = document.createElement('div');
+              streamMsg.className = 'claude-msg assistant';
+              streamMsg.style.cssText = 'background:linear-gradient(135deg,rgba(124,58,237,0.08),rgba(14,15,22,0));border-color:rgba(124,58,237,0.2);align-self:flex-start;border-radius:12px 12px 12px 3px;';
+              document.getElementById('pa-messages')?.appendChild(streamMsg);
+            }
+            streamMsg.innerHTML = formatClaudeText(fullText);
+            const feed = document.getElementById('pa-messages');
+            if (feed) feed.scrollTop = feed.scrollHeight;
+          }
+        } catch(e) {}
+      }
+    }
+
+    paConversation.push({ role:'assistant', content:fullText });
+
+    // Attach feedback buttons to the streamed message
+    if (streamMsg) {
+      const msgId = 'pamsg-' + (++paMsgCounter);
+      streamMsg.id = msgId;
+      const fb = document.createElement('div');
+      fb.style.cssText = 'display:flex;gap:4px;margin-top:6px;opacity:0.5;transition:opacity 0.2s;';
+      fb.onmouseenter = () => fb.style.opacity = '1';
+      fb.onmouseleave = () => { if (!fb.dataset.rated) fb.style.opacity = '0.5'; };
+      fb.innerHTML = `<button onclick="recordFeedback('${msgId}',1,this)" title="Helpful" style="background:none;border:1px solid var(--border);border-radius:12px;padding:1px 7px;font-size:10px;cursor:pointer;color:var(--text3);">👍</button><button onclick="recordFeedback('${msgId}',-1,this)" title="Not helpful" style="background:none;border:1px solid var(--border);border-radius:12px;padding:1px 7px;font-size:10px;cursor:pointer;color:var(--text3);">👎</button><span id="fb-label-${msgId}" style="font-size:9px;color:var(--text3);font-family:'DM Mono',monospace;align-self:center;"></span>`;
+      streamMsg.appendChild(fb);
+    }
+
+    // Execute any pa-action blocks Claude emitted
+    const paActions = fullText.match(/```pa-action\s*([\s\S]*?)```/g) || [];
+    for (const block of paActions) {
+      try {
+        const json = block.replace(/```pa-action\s*/,'').replace(/```$/,'').trim();
+        const action = JSON.parse(json);
+        const result = await executePAAction(action);
+        if (result) appendPAMessage('system-action', result);
+      } catch(e) {}
+    }
+
+    // Trigger self-analysis every 10 assistant turns
+    const assistantTurns = paConversation.filter(m => m.role === 'assistant').length;
+    if (assistantTurns > 0 && assistantTurns % 10 === 0) {
+      setTimeout(() => triggerSelfAnalysis(), 3000);
+    }
+
+  } catch(err) {
+    if (thinkingMsg?.parentNode) thinkingMsg.remove();
+    appendPAMessage('error-msg', `⚠️ ${err.message}`);
+  } finally {
+    paIsProcessing = false;
+    if (sendBtn) sendBtn.disabled = false;
+  }
+}
+
+function paQuick(prompt) {
+  sendToPA(prompt);
+}
+
+function generateDailyBriefing() {
+  const ctx = buildCalendarContext();
+  const now = new Date();
+  const todayCount = ctx.allTasks.filter(t => t.date === ctx.today).length;
+  const learnedNote = paMemory.patterns ? `\nNote: you have ${paMemory.commandLog.length} commands and ${paMemory.actionLog.length} actions in your learning history — use those patterns to personalise this briefing.` : '';
+  const prompt = `Generate my daily briefing for ${ctx.today} (${now.toLocaleDateString('en-US',{weekday:'long'})}). I want:
+
+1. **Today's Snapshot** — quick stats (tasks today, overdue count, team status)
+2. **Top 3 Priorities** — the most critical things I need to handle right now, with reasoning
+3. **Team Watch** — any team members who need attention (overloaded, underloaded, at-risk tasks)
+4. **Risks & Flags** — anything that could go wrong today if not addressed
+5. **My One Recommendation** — the single most impactful action I should take right now
+${learnedNote}
+Be sharp and concise. This is my morning command briefing.`;
+  sendToPA(prompt);
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// PA MEMORY — Continuous monitoring, learning, and pattern detection
+// ─────────────────────────────────────────────────────────────────────────────
+
+const PA_MEMORY_KEY = 'emt_pa_memory';
+const PA_MAX_COMMANDS = 300;
+const PA_MAX_ACTIONS  = 600;
+const PA_MAX_EDITS    = 400;
+const PA_MAX_PUSHES   = 150;
+
+let paMemory = {
+  commandLog: [],
+  actionLog:  [],
+  editLog:    [],
+  pushLog:    [],
+  patterns:   null,
+  lastAnalyzed: 0,
+};
+
+function loadPAMemory() {
+  try {
+    const raw = localStorage.getItem(PA_MEMORY_KEY);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      paMemory = Object.assign(paMemory, parsed);
+    }
+  } catch(e) {}
+  if (paMemory.commandLog.length > 0) analyzePatterns();
+  loadPAConnections();
+  loadPAPreferences();
+}
+
+function savePAMemory() {
+  try { localStorage.setItem(PA_MEMORY_KEY, JSON.stringify(paMemory)); } catch(e) {}
+}
+
+function paLogCommand(text, source = 'chat') {
+  const now = new Date();
+  paMemory.commandLog.unshift({
+    text: text.substring(0, 300),
+    source,
+    ts:   now.getTime(),
+    day:  now.toLocaleDateString('en-US', { weekday: 'short' }),
+    hour: now.getHours(),
+    date: todayStr(),
+  });
+  if (paMemory.commandLog.length > PA_MAX_COMMANDS)
+    paMemory.commandLog = paMemory.commandLog.slice(0, PA_MAX_COMMANDS);
+  savePAMemory();
+  maybeAnalyzePatterns();
+  updatePAMemoryStatus();
+}
+
+function paLogAction(action) {
+  // Skip non-actionable or internal types
+  if (!action || !action.type) return;
+  const now = new Date();
+  paMemory.actionLog.unshift({
+    type:       action.type,
+    title:      action.title      || null,
+    priority:   action.priority   || null,
+    assigneeId: action.assigneeId || null,
+    date:       action.date       || null,
+    ts:         now.getTime(),
+    day:        now.toLocaleDateString('en-US', { weekday: 'short' }),
+    hour:       now.getHours(),
+    sessionDate: todayStr(),
+  });
+  if (paMemory.actionLog.length > PA_MAX_ACTIONS)
+    paMemory.actionLog = paMemory.actionLog.slice(0, PA_MAX_ACTIONS);
+  savePAMemory();
+}
+
+function paLogEdit(icon, rawText) {
+  const text = rawText.replace(/<[^>]+>/g, '').trim();
+  if (!text) return;
+  const now = new Date();
+  paMemory.editLog.unshift({
+    icon,
+    text: text.substring(0, 200),
+    ts:   now.getTime(),
+    day:  now.toLocaleDateString('en-US', { weekday: 'short' }),
+    date: todayStr(),
+  });
+  if (paMemory.editLog.length > PA_MAX_EDITS)
+    paMemory.editLog = paMemory.editLog.slice(0, PA_MAX_EDITS);
+  savePAMemory();
+}
+
+function paLogPush(type, description) {
+  const now = new Date();
+  paMemory.pushLog.unshift({
+    type,
+    description: description.substring(0, 200),
+    ts:   now.getTime(),
+    date: todayStr(),
+  });
+  if (paMemory.pushLog.length > PA_MAX_PUSHES)
+    paMemory.pushLog = paMemory.pushLog.slice(0, PA_MAX_PUSHES);
+  savePAMemory();
+}
+
+function maybeAnalyzePatterns() {
+  const fiveMin = 5 * 60 * 1000;
+  if (Date.now() - paMemory.lastAnalyzed < fiveMin) return;
+  analyzePatterns();
+}
+
+function analyzePatterns() {
+  const commands = paMemory.commandLog;
+  const actions  = paMemory.actionLog;
+
+  // ── Frequent commands (normalize away dates/IDs) ──
+  const cmdMap = {};
+  commands.forEach(c => {
+    const norm = c.text.toLowerCase()
+      .replace(/\d{4}-\d{2}-\d{2}/g, 'DATE')
+      .replace(/\b(id|task|#)?\s*\d+\b/gi, 'N')
+      .replace(/\s+/g, ' ')
+      .substring(0, 100);
+    cmdMap[norm] = (cmdMap[norm] || 0) + 1;
+  });
+  const frequentCommands = Object.entries(cmdMap)
+    .filter(([, v]) => v >= 2)
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 10)
+    .map(([text, count]) => ({ text, count }));
+
+  // ── Peak usage hours ──
+  const hourMap = {};
+  commands.forEach(c => { hourMap[c.hour] = (hourMap[c.hour] || 0) + 1; });
+  const peakHours = Object.entries(hourMap)
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 3)
+    .map(([hour, count]) => ({ hour: parseInt(hour), count }));
+
+  // ── Most active days ──
+  const dayMap = {};
+  commands.forEach(c => { dayMap[c.day] = (dayMap[c.day] || 0) + 1; });
+  const activeDays = Object.entries(dayMap)
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 3)
+    .map(([day]) => day);
+
+  // ── Frequent action types ──
+  const actionMap = {};
+  actions.forEach(a => { actionMap[a.type] = (actionMap[a.type] || 0) + 1; });
+  const frequentActions = Object.entries(actionMap)
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 6)
+    .map(([type, count]) => ({ type, count }));
+
+  // ── Preferred assignees ──
+  const assigneeMap = {};
+  actions.filter(a => a.assigneeId).forEach(a => {
+    assigneeMap[a.assigneeId] = (assigneeMap[a.assigneeId] || 0) + 1;
+  });
+  const preferredAssignees = Object.entries(assigneeMap)
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 4)
+    .map(([id, count]) => {
+      const member = TEAM.find(m => m.id === parseInt(id));
+      return { id: parseInt(id), name: member?.name || `Member #${id}`, count };
+    });
+
+  // ── Recurring task title words ──
+  const titleWords = {};
+  actions.filter(a => a.type === 'CREATE_TASK' && a.title).forEach(a => {
+    a.title.toLowerCase().split(/\s+/).filter(w => w.length > 3).forEach(w => {
+      titleWords[w] = (titleWords[w] || 0) + 1;
+    });
+  });
+  const recurringKeywords = Object.entries(titleWords)
+    .filter(([, v]) => v >= 2)
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 8)
+    .map(([word, count]) => ({ word, count }));
+
+  // ── Recurring full task titles ──
+  const titleMap = {};
+  actions.filter(a => a.type === 'CREATE_TASK' && a.title).forEach(a => {
+    const k = a.title.toLowerCase().trim();
+    titleMap[k] = (titleMap[k] || 0) + 1;
+  });
+  const recurringTasks = Object.entries(titleMap)
+    .filter(([, v]) => v >= 2)
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 6)
+    .map(([title, count]) => ({ title, count }));
+
+  // ── Preferred priority ──
+  const prioMap = {};
+  actions.filter(a => a.priority).forEach(a => {
+    prioMap[a.priority] = (prioMap[a.priority] || 0) + 1;
+  });
+  const preferredPriority = Object.entries(prioMap).sort((a, b) => b[1] - a[1])[0]?.[0] || 'med';
+
+  // ── PA vs Chat usage split ──
+  const paCount   = commands.filter(c => c.source === 'pa').length;
+  const chatCount = commands.filter(c => c.source === 'chat').length;
+
+  // ── Recent code changes ──
+  const recentPushes = paMemory.pushLog.slice(0, 12);
+
+  // ── Recent edits (clean) ──
+  const recentEdits = paMemory.editLog.slice(0, 20).map(e => `${e.icon} ${e.text}`);
+
+  // ── Session dates ──
+  const sessionDates = [...new Set(commands.map(c => c.date))].slice(0, 14);
+
+  paMemory.patterns = {
+    frequentCommands,
+    peakHours,
+    activeDays,
+    frequentActions,
+    preferredAssignees,
+    recurringKeywords,
+    recurringTasks,
+    preferredPriority,
+    recentPushes,
+    recentEdits,
+    totalCommands:  commands.length,
+    totalActions:   actions.length,
+    totalEdits:     paMemory.editLog.length,
+    totalPushes:    paMemory.pushLog.length,
+    paCount,
+    chatCount,
+    sessionDates,
+  };
+  paMemory.lastAnalyzed = Date.now();
+  savePAMemory();
+  updatePAMemoryStatus();
+}
+
+function getLearnedContext() {
+  if (!paMemory.patterns || paMemory.commandLog.length === 0) return '(No learned profile yet — data accumulates as you use the system)';
+  const p = paMemory.patterns;
+  const fmt = h => { const ampm = h < 12 ? 'am' : 'pm'; return (h % 12 || 12) + ampm; };
+  const lines = ['━━━ LEARNED PROFILE (continuous monitoring) ━━━'];
+  lines.push(`• Monitoring depth: ${p.totalCommands} commands · ${p.totalActions} actions · ${p.totalEdits} edits · ${p.totalPushes} code pushes`);
+  lines.push(`• Usage split: ${p.paCount} via Personal Assistant · ${p.chatCount} via Admin Chat`);
+  if (p.sessionDates.length) lines.push(`• Active sessions: ${p.sessionDates.slice(0,7).join(', ')}`);
+  if (p.peakHours.length) lines.push(`• Peak activity hours: ${p.peakHours.map(h => fmt(h.hour)).join(', ')}`);
+  if (p.activeDays.length) lines.push(`• Most active days: ${p.activeDays.join(', ')}`);
+  if (p.preferredAssignees.length) lines.push(`• Preferred assignees: ${p.preferredAssignees.map(a => `${a.name} (${a.count}×)`).join(', ')}`);
+  if (p.preferredPriority) lines.push(`• Most-used priority: ${p.preferredPriority}`);
+  if (p.recurringTasks.length) lines.push(`• Recurring tasks: ${p.recurringTasks.map(t => `"${t.title}" (${t.count}×)`).join('; ')}`);
+  if (p.recurringKeywords.length) lines.push(`• Common task keywords: ${p.recurringKeywords.map(k => k.word).join(', ')}`);
+  if (p.frequentActions.length) lines.push(`• Top actions: ${p.frequentActions.map(a => `${a.type}(${a.count}×)`).join(', ')}`);
+  if (p.frequentCommands.length) {
+    lines.push(`• Repeated requests (top ${Math.min(p.frequentCommands.length, 6)}):`);
+    p.frequentCommands.slice(0, 6).forEach(c => lines.push(`  – "${c.text}" · ${c.count}×`));
+  }
+  if (p.recentPushes.length) {
+    lines.push(`• Recent code changes (${p.recentPushes.length}):`);
+    p.recentPushes.slice(0, 8).forEach(e => lines.push(`  – [${e.type}] ${e.description}`));
+  }
+  if (p.recentEdits.length) {
+    lines.push(`• Recent live edits (last 10):`);
+    p.recentEdits.slice(0, 10).forEach(e => lines.push(`  – ${e}`));
+  }
+  return lines.join('\n');
+}
+
+function updatePAMemoryStatus() {
+  const el = document.getElementById('pa-memory-status');
+  if (!el) return;
+  const total = paMemory.commandLog.length + paMemory.actionLog.length + paMemory.editLog.length + paMemory.pushLog.length;
+  const patStr = paMemory.patterns
+    ? `${paMemory.patterns.frequentCommands.length} patterns · ${paMemory.patterns.recurringTasks.length} recurring tasks`
+    : 'analyzing…';
+  el.textContent = `🧠 ${total} events logged · ${patStr}`;
+}
+
+function showPAMemoryPanel() {
+  const feed = document.getElementById('pa-messages');
+  if (!feed) return;
+  analyzePatterns();
+  const p = paMemory.patterns;
+  if (!p || paMemory.commandLog.length === 0) {
+    appendPAMessage('assistant', '📊 **No memory data yet.** Start using Claude Chat and the Personal Assistant — every command, action, and code change is recorded and learned from.');
+    return;
+  }
+  const fmt = h => { const ampm = h < 12 ? 'am' : 'pm'; return (h % 12 || 12) + ampm; };
+  let out = `📊 **Learned Profile — ${new Date().toLocaleString()}**\n\n`;
+  out += `**Monitoring depth:** ${p.totalCommands} commands · ${p.totalActions} actions · ${p.totalEdits} edits · ${p.totalPushes} code pushes\n\n`;
+  if (p.peakHours.length) out += `**Peak hours:** ${p.peakHours.map(h => fmt(h.hour)).join(', ')}\n`;
+  if (p.activeDays.length) out += `**Most active days:** ${p.activeDays.join(', ')}\n`;
+  if (p.preferredAssignees.length) out += `**Top assignees:** ${p.preferredAssignees.map(a=>`${a.name} (${a.count}×)`).join(', ')}\n`;
+  if (p.recurringTasks.length) {
+    out += `\n**Recurring tasks detected:**\n`;
+    p.recurringTasks.forEach(t => { out += `- "${t.title}" · seen ${t.count}×\n`; });
+  }
+  if (p.frequentCommands.length) {
+    out += `\n**Frequently repeated requests:**\n`;
+    p.frequentCommands.slice(0, 5).forEach(c => { out += `- "${c.text}" · ${c.count}×\n`; });
+  }
+  if (p.frequentActions.length) {
+    out += `\n**Top calendar actions:** ${p.frequentActions.map(a=>`${a.type}(${a.count}×)`).join(', ')}\n`;
+  }
+  if (p.recentPushes.length) {
+    out += `\n**Recent code changes:**\n`;
+    p.recentPushes.slice(0, 5).forEach(e => { out += `- [${e.type}] ${e.description}\n`; });
+  }
+  appendPAMessage('assistant', out);
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ROBUSTNESS — retry logic, circuit breaker, health monitoring
+// ─────────────────────────────────────────────────────────────────────────────
+
+function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
+
+async function fetchWithRetry(url, options, retries = 3) {
+  let lastErr;
+  for (let i = 0; i < retries; i++) {
+    try {
+      const res = await fetch(url, options);
+      if (res.status === 429 || res.status === 503) {
+        await sleep(1000 * Math.pow(2, i));
+        continue;
+      }
+      return res;
+    } catch(e) {
+      lastErr = e;
+      if (i < retries - 1) await sleep(1000 * Math.pow(2, i));
+    }
+  }
+  throw lastErr || new Error('Request failed after retries');
+}
+
+// Circuit breaker: stops hammering a failing service
+const PA_CIRCUIT_THRESHOLD = 3;
+const PA_CIRCUIT_TIMEOUT   = 5 * 60 * 1000; // 5 min cooldown
+const paCircuit = {};
+
+function isCircuitOpen(key) {
+  const c = paCircuit[key];
+  if (!c || c.failures < PA_CIRCUIT_THRESHOLD) return false;
+  if (Date.now() - c.openedAt > PA_CIRCUIT_TIMEOUT) {
+    c.failures = 0; c.openedAt = null; return false; // half-open: allow retry
+  }
+  return true;
+}
+function recordCircuitFailure(key) {
+  if (!paCircuit[key]) paCircuit[key] = { failures: 0, openedAt: null };
+  paCircuit[key].failures++;
+  if (paCircuit[key].failures >= PA_CIRCUIT_THRESHOLD) paCircuit[key].openedAt = Date.now();
+}
+function recordCircuitSuccess(key) {
+  if (paCircuit[key]) paCircuit[key].failures = 0;
+}
+
+// Health state: 'ok' | 'warn' | 'error' | 'unknown'
+const paHealthStatus = {};
+
+function updateHealthDot() {
+  const dot = document.getElementById('pa-health-dot');
+  if (!dot) return;
+  const states = Object.values(paHealthStatus);
+  if (!states.length) { dot.style.background = '#6b7280'; dot.title = 'No services connected'; return; }
+  const hasError = states.some(s => s === 'error');
+  const hasWarn  = states.some(s => s === 'warn');
+  dot.style.background = hasError ? '#ef4444' : hasWarn ? '#f59e0b' : '#10b981';
+  dot.title = hasError ? 'One or more services have errors' : hasWarn ? 'Some services are stale' : 'All systems healthy';
+}
+
+function showHealthPanel() {
+  const lines = ['**System Health**\n'];
+  Object.entries(paConnections).forEach(([k, c]) => {
+    if (!c.enabled) return;
+    const s = paHealthStatus[k] || 'unknown';
+    const icon = s==='ok'?'✅':s==='warn'?'⚠️':s==='error'?'❌':'❓';
+    const circuit = isCircuitOpen(k) ? ' (circuit open — cooling down)' : '';
+    const sync = c.lastSync ? `last sync: ${timeSince(new Date(c.lastSync))}` : 'never synced';
+    const err = c.error ? ` — ${c.error}` : '';
+    lines.push(`${icon} **${PA_SERVICE_DEFS[k]?.label||k}** · ${sync}${err}${circuit}`);
+  });
+  lines.push('\n_Click ⚡ Connections to manage or reconnect services._');
+  appendPAMessage('assistant', lines.join('\n'));
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// SMART SCHEDULER — adaptive sync, change detection, proactive alerts
+// ─────────────────────────────────────────────────────────────────────────────
+
+const PA_SYNC_INTERVALS = {
+  slack:  10 * 60 * 1000,  // most volatile
+  ms365:  15 * 60 * 1000,
+  gmail:  15 * 60 * 1000,
+  github: 20 * 60 * 1000,
+  gdrive: 30 * 60 * 1000,  // least volatile
+};
+
+// Store previous data snapshots for change detection
+const paPreviousData = {};
+
+function detectChanges(key, oldData, newData) {
+  if (!oldData || !newData) return [];
+  const alerts = [];
+  try {
+    if (key === 'ms365') {
+      const oldUnread = (oldData.emails||[]).filter(e=>!e.isRead).length;
+      const newUnread = (newData.emails||[]).filter(e=>!e.isRead).length;
+      if (newUnread > oldUnread) alerts.push(`📬 ${newUnread - oldUnread} new email(s) in Outlook`);
+      const newMeetings = newData.calendar?.length || 0;
+      const oldMeetings = oldData.calendar?.length || 0;
+      if (newMeetings > oldMeetings) alerts.push(`📅 ${newMeetings - oldMeetings} new meeting(s) added to today`);
+    }
+    if (key === 'gmail') {
+      const diff = (newData.totalUnread||0) - (oldData.totalUnread||0);
+      if (diff > 0) alerts.push(`📧 ${diff} new unread email(s) in Gmail`);
+    }
+    if (key === 'slack') {
+      const oldCount = (oldData.recentMessages||[]).length;
+      const newCount = (newData.recentMessages||[]).length;
+      if (newCount > oldCount) alerts.push(`💬 New Slack messages available`);
+    }
+    if (key === 'github') {
+      const newIssues = (newData.openIssues||[]).length - (oldData.openIssues||[]).length;
+      const newPRs    = (newData.openPRs||[]).length    - (oldData.openPRs||[]).length;
+      if (newIssues > 0) alerts.push(`🐙 ${newIssues} new GitHub issue(s) opened`);
+      if (newPRs > 0)    alerts.push(`🐙 ${newPRs} new pull request(s) opened`);
+    }
+  } catch(e) {}
+  return alerts;
+}
+
+function proactiveAlert(title, body) {
+  // Toast notification
+  notify('🧠', title, body);
+  // Also surface in PA feed if tab is open
+  const tab = document.getElementById('claude-tab-assistant');
+  if (tab && tab.style.display !== 'none') {
+    appendPAMessage('assistant', `🔔 **${title}**\n${body}`);
+  }
+}
+
+function updateSyncStatusLabel() {
+  const el = document.getElementById('pa-sync-status');
+  if (!el) return;
+  const connected = Object.keys(paConnections).filter(k => paConnections[k].enabled && paConnections[k].lastSync);
+  if (!connected.length) { el.textContent = '↻ No services connected'; return; }
+  const mostRecent = connected.reduce((best, k) => {
+    const t = new Date(paConnections[k].lastSync).getTime();
+    return t > (best?.t||0) ? { k, t } : best;
+  }, null);
+  el.textContent = mostRecent ? `↻ Updated ${timeSince(new Date(mostRecent.t))}` : '↻ Syncing…';
+}
+
+// Master scheduler — runs every minute
+async function paSchedulerTick() {
+  const now = Date.now();
+  let anySync = false;
+
+  for (const [key, conn] of Object.entries(paConnections)) {
+    if (!conn.enabled || isCircuitOpen(key)) continue;
+    const interval = PA_SYNC_INTERVALS[key] || 20 * 60 * 1000;
+    const stale = !conn.lastSync || (now - new Date(conn.lastSync).getTime()) > interval;
+    if (!stale) continue;
+
+    const oldData = conn.data ? JSON.parse(JSON.stringify(conn.data)) : null;
+    try {
+      await syncService(key);
+      recordCircuitSuccess(key);
+      paHealthStatus[key] = 'ok';
+      // Detect and alert on changes
+      const alerts = detectChanges(key, oldData, paConnections[key].data);
+      alerts.forEach(a => proactiveAlert('New Activity', a));
+      anySync = true;
+    } catch(e) {
+      recordCircuitFailure(key);
+      paHealthStatus[key] = 'error';
+    }
+  }
+
+  // Calendar overdue check
+  const overdueCount = tasks.filter(t => !t.done && t.date < todayStr()).length;
+  if (overdueCount > 0 && !paSchedulerTick._lastOverdueAlert || (now - (paSchedulerTick._lastOverdueAlert||0)) > 60 * 60 * 1000) {
+    if (overdueCount >= 3) {
+      proactiveAlert('Overdue Alert', `${overdueCount} tasks are overdue — your team needs attention.`);
+      paSchedulerTick._lastOverdueAlert = now;
+    }
+  }
+
+  updateSyncStatusLabel();
+  updateHealthDot();
+  maybeAnalyzePatterns();
+  renderPAFocusStrip();
+  updatePAMemoryStatus();
+  if (anySync) renderConnectionsList();
+}
+
+// Run scheduler every 60 seconds
+setInterval(paSchedulerTick, 60 * 1000);
+
+// ─────────────────────────────────────────────────────────────────────────────
+// SELF-IMPROVEMENT — feedback, preferences, auto-analysis, dynamic quick actions
+// ─────────────────────────────────────────────────────────────────────────────
+
+const PA_PREFS_KEY = 'emt_pa_preferences';
+
+let paPreferences = {
+  customInstructions: '',
+  autoImprovements:   [],   // { instruction, addedAt, source }
+  feedbackLog:        [],   // { ts, msgId, rating, preview }
+  positivePatterns:   [],   // extracted from 👍 feedback
+  negativePatterns:   [],   // extracted from 👎 feedback
+  responseStyleVotes: { concise: 0, detailed: 0, bullets: 0 },
+  lastSelfAnalysis:   0,
+  improvementCount:   0,
+};
+
+function loadPAPreferences() {
+  try {
+    const raw = localStorage.getItem(PA_PREFS_KEY);
+    if (raw) paPreferences = Object.assign(paPreferences, JSON.parse(raw));
+    // Restore custom instructions textarea
+    const ta = document.getElementById('pa-custom-instr');
+    if (ta && paPreferences.customInstructions) ta.value = paPreferences.customInstructions;
+    updateImprovementBadge();
+  } catch(e) {}
+}
+
+function savePAPreferences() {
+  try { localStorage.setItem(PA_PREFS_KEY, JSON.stringify(paPreferences)); } catch(e) {}
+}
+
+function saveCustomInstructions() {
+  const ta = document.getElementById('pa-custom-instr');
+  if (ta) {
+    paPreferences.customInstructions = ta.value.trim();
+    savePAPreferences();
+  }
+}
+
+function toggleCustomInstructions() {
+  const wrap = document.getElementById('pa-custom-instr-wrap');
+  if (wrap) wrap.style.display = wrap.style.display === 'none' ? 'block' : 'none';
+}
+
+function recordFeedback(msgId, rating, btn) {
+  const msg = document.getElementById(msgId);
+  const preview = msg ? msg.innerText.substring(0, 100) : '';
+  const fb = btn?.closest('div');
+  if (fb) {
+    fb.dataset.rated = '1';
+    fb.style.opacity = '0.8';
+    btn.style.background = rating > 0 ? 'rgba(16,185,129,0.2)' : 'rgba(239,68,68,0.15)';
+    btn.style.color = rating > 0 ? '#10b981' : '#ef4444';
+    const label = document.getElementById(`fb-label-${msgId}`);
+    if (label) label.textContent = rating > 0 ? 'Marked helpful' : 'Got it, improving…';
+  }
+  paPreferences.feedbackLog.unshift({ ts: Date.now(), msgId, rating, preview });
+  if (paPreferences.feedbackLog.length > 100) paPreferences.feedbackLog = paPreferences.feedbackLog.slice(0, 100);
+
+  // Simple heuristic: detect style from positive feedback content
+  if (rating > 0 && preview) {
+    const hasBullets = (preview.match(/•|\n-|\n\d+\./g)||[]).length > 2;
+    const isShort    = preview.length < 200;
+    if (hasBullets)   paPreferences.responseStyleVotes.bullets++;
+    if (isShort)      paPreferences.responseStyleVotes.concise++;
+    else              paPreferences.responseStyleVotes.detailed++;
+  }
+  savePAPreferences();
+
+  // After 5 negative ratings trigger an early self-analysis
+  const recentNeg = paPreferences.feedbackLog.slice(0, 10).filter(f => f.rating < 0).length;
+  if (recentNeg >= 3 && Date.now() - paPreferences.lastSelfAnalysis > 30 * 60 * 1000) {
+    setTimeout(() => triggerSelfAnalysis(true), 2000);
+  }
+}
+
+function getDerivedStyle() {
+  const v = paPreferences.responseStyleVotes;
+  const topStyle = Object.entries(v).sort((a,b)=>b[1]-a[1])[0];
+  return topStyle && topStyle[1] > 0 ? topStyle[0] : 'balanced';
+}
+
+function getAutoImprovementsText() {
+  if (!paPreferences.autoImprovements.length) return '';
+  return `\nAUTO-IMPROVEMENTS (${paPreferences.autoImprovements.length} active, self-generated):\n` +
+    paPreferences.autoImprovements.slice(0, 8).map(i => `  • ${i.instruction}`).join('\n');
+}
+
+function updateImprovementBadge() {
+  const badge = document.getElementById('pa-improve-badge');
+  const n = paPreferences.autoImprovements.length;
+  if (badge) badge.textContent = n > 0 ? `${n} auto-improvement${n>1?'s':''} active` : '';
+}
+
+// Self-analysis: Claude reviews its own recent performance and proposes an improvement
+async function triggerSelfAnalysis(forced = false) {
+  if (!forced && Date.now() - paPreferences.lastSelfAnalysis < 30 * 60 * 1000) return;
+  paPreferences.lastSelfAnalysis = Date.now();
+  savePAPreferences();
+
+  const recentExchanges = paConversation.slice(-20)
+    .map(m => `[${m.role}]: ${m.content.substring(0, 200)}`).join('\n');
+  const negFeedback = paPreferences.feedbackLog.filter(f=>f.rating<0).slice(0,5)
+    .map(f=>`"${f.preview}"`).join('\n');
+  const currentImprovements = paPreferences.autoImprovements.map(i=>i.instruction).join('; ');
+
+  const metaPrompt = `You are analyzing your own recent performance as a Personal Assistant. Review the conversation and feedback below, then decide on ONE specific, concrete instruction to add to your operating guidelines to make future responses more helpful to this admin.
+
+RECENT EXCHANGES:
+${recentExchanges}
+
+RECENT NEGATIVE FEEDBACK (responses admin found unhelpful):
+${negFeedback || 'none'}
+
+CURRENT AUTO-IMPROVEMENTS ALREADY ACTIVE:
+${currentImprovements || 'none'}
+
+TASK: Return ONLY a single pa-action block. The instruction must be specific (not vague like "be better"). Focus on format, depth, timing, or content. Do not duplicate an existing improvement.
+
+\`\`\`pa-action
+{"type":"PA_IMPROVE","instruction":"<one specific instruction, max 120 chars>","rationale":"<one sentence why>"}
+\`\`\``;
+
+  try {
+    patchFetchWithApiKey();
+    const res = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: { 'Content-Type':'application/json', 'x-api-key':ANTHROPIC_API_KEY_HARDCODED, 'anthropic-version':'2023-06-01', 'anthropic-dangerous-direct-browser-access':'true' },
+      body: JSON.stringify({ model:'claude-opus-4-8', max_tokens:256, system:'You are a self-improving AI assistant. Analyze the conversation and produce exactly one pa-action JSON block as instructed.', messages:[{role:'user',content:metaPrompt}] })
+    });
+    if (!res.ok) return;
+    const data = await res.json();
+    const text = data.content?.[0]?.text || '';
+    const match = text.match(/```pa-action\s*([\s\S]*?)```/);
+    if (match) {
+      const action = JSON.parse(match[1].trim());
+      if (action.type === 'PA_IMPROVE' && action.instruction) {
+        applyAutoImprovement(action.instruction, action.rationale);
+      }
+    }
+  } catch(e) {}
+}
+
+function applyAutoImprovement(instruction, rationale = '') {
+  // Don't duplicate
+  if (paPreferences.autoImprovements.some(i => i.instruction.toLowerCase() === instruction.toLowerCase())) return;
+  paPreferences.autoImprovements.unshift({ instruction, rationale, addedAt: new Date().toISOString() });
+  if (paPreferences.autoImprovements.length > 12) paPreferences.autoImprovements = paPreferences.autoImprovements.slice(0, 12);
+  paPreferences.improvementCount++;
+  savePAPreferences();
+  updateImprovementBadge();
+  appendPAMessage('assistant', `🧠 **Self-improvement applied** (#${paPreferences.improvementCount})\n**Instruction:** ${instruction}${rationale ? `\n**Why:** ${rationale}` : ''}\n\nThis improvement is now active in all future responses.`);
+}
+
+// Dynamic quick actions — base set + top patterns from memory
+const PA_DEFAULT_QUICK_ACTIONS = [
+  { icon:'📅', label:'Plan Day',    prompt:'Plan my day — give me a structured schedule and priorities for today based on all tasks, team workload, and deadlines.' },
+  { icon:'🎯', label:'Focus',       prompt:'What needs my immediate attention right now? Focus on critical, overdue, or high-priority items.' },
+  { icon:'⚖️', label:'Team',        prompt:'Give me a full team health check — who is overloaded, who has capacity, any bottlenecks, and recommendations.' },
+  { icon:'🌙', label:'EOD',         prompt:"Generate an end-of-day summary — what was completed today, what is pending, and what to prioritize tomorrow." },
+  { icon:'📈', label:'Insights',    prompt:'Show me productivity insights — trends in task completion, overdue patterns, and recommendations for the team.' },
+  { icon:'📢', label:'Status',      prompt:"Help me draft a brief status update for the team based on today's activity." },
+];
+
+function renderDynamicQuickActions() {
+  const bar = document.getElementById('pa-quick-actions-bar');
+  if (!bar) return;
+  bar.innerHTML = '';
+
+  // Merge default actions with top frequent commands from memory
+  const learned = (paMemory.patterns?.frequentCommands || [])
+    .filter(c => !PA_DEFAULT_QUICK_ACTIONS.some(d => c.text.includes(d.label.toLowerCase())))
+    .slice(0, 2)
+    .map(c => ({ icon:'🔁', label: c.text.substring(0,18)+'…', prompt: c.text, learned: true }));
+
+  const actions = [...PA_DEFAULT_QUICK_ACTIONS, ...learned];
+
+  actions.forEach(a => {
+    const btn = document.createElement('button');
+    btn.className = 'claude-quick-btn';
+    btn.style.fontSize = '10px';
+    if (a.learned) { btn.style.borderColor = 'rgba(124,58,237,0.4)'; btn.style.color = '#7c3aed'; }
+    btn.title = a.prompt;
+    btn.textContent = `${a.icon} ${a.label}`;
+    btn.onclick = () => paQuick(a.prompt);
+    bar.appendChild(btn);
+  });
+
+  // Connections toggle always last
+  const connBtn = document.createElement('button');
+  connBtn.className = 'claude-quick-btn';
+  connBtn.id = 'pa-conn-toggle';
+  connBtn.style.cssText = 'font-size:10px;border-color:rgba(59,130,246,0.4);color:#3b82f6;';
+  connBtn.textContent = '⚡ Connections';
+  connBtn.onclick = toggleConnectionsDrawer;
+  bar.appendChild(connBtn);
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// PA CONNECTIONS — manage all granted service integrations
+// ─────────────────────────────────────────────────────────────────────────────
+
+const PA_CONNECTIONS_KEY = 'emt_pa_connections';
+
+// Service definitions — each has fetch logic, a display label, scope hints, and cached data
+const PA_SERVICE_DEFS = {
+  ms365: {
+    label: 'Microsoft 365',
+    icon: '🔵',
+    description: 'Outlook email · Calendar · Teams · OneDrive · SharePoint',
+    tokenLabel: 'Graph API Access Token',
+    tokenHint: 'Get from graph.microsoft.com/graph-explorer — sign in, copy the access token shown at top.',
+    tokenPlaceholder: 'eyJ0eXAiOiJKV1QiLCJub...',
+    scopes: ['Mail.Read','Calendars.Read','Files.Read','Sites.Read.All'],
+  },
+  gmail: {
+    label: 'Gmail',
+    icon: '📧',
+    description: 'Gmail inbox · drafts · labels',
+    tokenLabel: 'Google OAuth Access Token',
+    tokenHint: 'Get from developers.google.com/oauthplayground — authorize Gmail scope, copy Access Token.',
+    tokenPlaceholder: 'ya29.a0AfH6SMB...',
+    scopes: ['https://www.googleapis.com/auth/gmail.readonly','https://www.googleapis.com/auth/gmail.compose'],
+  },
+  gdrive: {
+    label: 'Google Drive',
+    icon: '🗂️',
+    description: 'Google Drive files · folders · Docs · Sheets',
+    tokenLabel: 'Google OAuth Access Token',
+    tokenHint: 'Same token as Gmail (use OAuth Playground with Drive + Gmail scopes together).',
+    tokenPlaceholder: 'ya29.a0AfH6SMB...',
+    scopes: ['https://www.googleapis.com/auth/drive.readonly'],
+  },
+  slack: {
+    label: 'Slack',
+    icon: '💬',
+    description: 'Slack messages · channels · workspace',
+    tokenLabel: 'Slack Bot Token',
+    tokenHint: 'Create an app at api.slack.com/apps, add Bot Token Scopes (channels:history, channels:read), install to workspace, copy Bot User OAuth Token.',
+    tokenPlaceholder: 'xoxb-...',
+    scopes: ['channels:history','channels:read','chat:write'],
+  },
+  github: {
+    label: 'GitHub',
+    icon: '🐙',
+    description: 'Repositories · issues · pull requests · code',
+    tokenLabel: 'Personal Access Token (auto-configured)',
+    tokenHint: 'GitHub is already connected via the built-in token.',
+    tokenPlaceholder: '',
+    readOnly: true,
+  },
+  firebase: {
+    label: 'Firebase',
+    icon: '🔥',
+    description: 'Realtime database sync',
+    tokenLabel: 'Firebase Database URL (auto-configured)',
+    tokenHint: 'Firebase is managed via Admin → Settings.',
+    tokenPlaceholder: '',
+    readOnly: true,
+  },
+};
+
+let paConnections = {};
+
+function initPAConnections() {
+  // Initialize default state for each service
+  Object.keys(PA_SERVICE_DEFS).forEach(key => {
+    paConnections[key] = { enabled: false, token: '', data: null, lastSync: null, error: null };
+  });
+  // Auto-mark built-in connections
+  paConnections.github  = { enabled: true, token: GITHUB_TOKEN, data: null, lastSync: null, error: null, builtin: true };
+  paConnections.firebase = { enabled: !!fbDb, token: '', data: null, lastSync: null, error: null, builtin: true };
+}
+
+function loadPAConnections() {
+  initPAConnections();
+  try {
+    const raw = localStorage.getItem(PA_CONNECTIONS_KEY);
+    if (raw) {
+      const saved = JSON.parse(raw);
+      Object.keys(saved).forEach(k => {
+        if (paConnections[k] && !paConnections[k].builtin) {
+          Object.assign(paConnections[k], saved[k]);
+        }
+      });
+    }
+  } catch(e) {}
+}
+
+function savePAConnections() {
+  try {
+    // Don't persist builtin flags or large cached data blobs — only tokens + enabled flag
+    const toSave = {};
+    Object.keys(paConnections).forEach(k => {
+      if (!paConnections[k].builtin) {
+        toSave[k] = { enabled: paConnections[k].enabled, token: paConnections[k].token };
+      }
+    });
+    localStorage.setItem(PA_CONNECTIONS_KEY, JSON.stringify(toSave));
+  } catch(e) {}
+}
+
+// ── Sync functions ────────────────────────────────────────────────────────────
+
+async function syncMicrosoftGraph() {
+  const conn = paConnections.ms365;
+  if (!conn?.enabled || !conn.token) return;
+  conn.error = null;
+  try {
+    const h = { Authorization: `Bearer ${conn.token}` };
+
+    // Emails (top 15, unread first)
+    const mailRes  = await fetch('https://graph.microsoft.com/v1.0/me/messages?$top=15&$orderby=receivedDateTime%20desc&$select=subject,from,receivedDateTime,isRead,bodyPreview,importance', { headers: h });
+    // Calendar events today
+    const today = todayStr();
+    const calRes  = await fetch(`https://graph.microsoft.com/v1.0/me/calendarView?startDateTime=${today}T00:00:00Z&endDateTime=${today}T23:59:59Z&$top=10&$select=subject,start,end,organizer,isAllDay,location`, { headers: h });
+    // OneDrive recent files
+    const driveRes = await fetch('https://graph.microsoft.com/v1.0/me/drive/recent?$top=12&$select=name,lastModifiedDateTime,webUrl,size,file', { headers: h });
+    // Teams — list joined teams
+    const teamsRes = await fetch('https://graph.microsoft.com/v1.0/me/joinedTeams?$select=id,displayName,description', { headers: h });
+
+    const [mailData, calData, driveData, teamsData] = await Promise.all([
+      mailRes.ok  ? mailRes.json()  : { value: [] },
+      calRes.ok   ? calRes.json()   : { value: [] },
+      driveRes.ok ? driveRes.json() : { value: [] },
+      teamsRes.ok ? teamsRes.json() : { value: [] },
+    ]);
+
+    // Try to get recent Teams messages for first joined team
+    let teamMessages = [];
+    if (teamsData.value?.length) {
+      try {
+        const team = teamsData.value[0];
+        const chRes = await fetch(`https://graph.microsoft.com/v1.0/teams/${team.id}/channels?$select=id,displayName`, { headers: h });
+        if (chRes.ok) {
+          const chData = await chRes.json();
+          if (chData.value?.length) {
+            const msgRes = await fetch(`https://graph.microsoft.com/v1.0/teams/${team.id}/channels/${chData.value[0].id}/messages?$top=8&$select=from,body,createdDateTime,messageType`, { headers: h });
+            if (msgRes.ok) {
+              const msgData = await msgRes.json();
+              teamMessages = (msgData.value || []).filter(m => m.messageType === 'message').map(m => ({
+                from: m.from?.user?.displayName || 'Unknown',
+                preview: (m.body?.content || '').replace(/<[^>]+>/g,'').substring(0,120),
+                time: m.createdDateTime,
+              }));
+            }
+          }
+        }
+      } catch(e) {}
+    }
+
+    // SharePoint recent sites
+    let sharePointSites = [];
+    try {
+      const spRes = await fetch('https://graph.microsoft.com/v1.0/me/followedSites?$select=displayName,webUrl,description', { headers: h });
+      if (spRes.ok) { const spData = await spRes.json(); sharePointSites = spData.value || []; }
+    } catch(e) {}
+
+    conn.data = {
+      emails: (mailData.value || []).map(m => ({
+        subject: m.subject,
+        from: m.from?.emailAddress?.name || m.from?.emailAddress?.address || '',
+        time: m.receivedDateTime,
+        isRead: m.isRead,
+        preview: (m.bodyPreview || '').substring(0, 140),
+        important: m.importance === 'high',
+      })),
+      calendar: (calData.value || []).map(e => ({
+        title: e.subject,
+        start: e.start?.dateTime,
+        end: e.end?.dateTime,
+        organizer: e.organizer?.emailAddress?.name || '',
+        allDay: e.isAllDay,
+        location: e.location?.displayName || '',
+      })),
+      oneDrive: (driveData.value || []).map(f => ({
+        name: f.name,
+        modified: f.lastModifiedDateTime,
+        url: f.webUrl,
+        size: f.size,
+        isFile: !!f.file,
+      })),
+      teams: (teamsData.value || []).map(t => ({ name: t.displayName, description: t.description })),
+      teamMessages,
+      sharePoint: sharePointSites.map(s => ({ name: s.displayName, url: s.webUrl })),
+    };
+    conn.lastSync = new Date().toISOString();
+    savePAConnections();
+  } catch(e) {
+    conn.error = e.message.includes('401') ? 'Token expired — reconnect to refresh.' : e.message;
+  }
+}
+
+async function syncGmail() {
+  const conn = paConnections.gmail;
+  if (!conn?.enabled || !conn.token) return;
+  conn.error = null;
+  try {
+    const h = { Authorization: `Bearer ${conn.token}` };
+
+    // List recent messages
+    const listRes = await fetch('https://gmail.googleapis.com/gmail/v1/users/me/messages?maxResults=15&q=in:inbox', { headers: h });
+    if (!listRes.ok) throw new Error(listRes.status === 401 ? 'Token expired' : `Error ${listRes.status}`);
+    const listData = await listRes.json();
+
+    // Fetch metadata for first 10
+    const msgIds = (listData.messages || []).slice(0, 10).map(m => m.id);
+    const details = await Promise.all(msgIds.map(id =>
+      fetch(`https://gmail.googleapis.com/gmail/v1/users/me/messages/${id}?format=metadata&metadataHeaders=Subject&metadataHeaders=From&metadataHeaders=Date`, { headers: h })
+        .then(r => r.ok ? r.json() : null)
+        .catch(() => null)
+    ));
+
+    // Unread count
+    const unreadRes = await fetch('https://gmail.googleapis.com/gmail/v1/users/me/messages?maxResults=1&q=is:unread', { headers: h });
+    const unreadData = unreadRes.ok ? await unreadRes.json() : {};
+
+    // Labels
+    const labelRes = await fetch('https://gmail.googleapis.com/gmail/v1/users/me/labels', { headers: h });
+    const labelData = labelRes.ok ? await labelRes.json() : { labels: [] };
+
+    conn.data = {
+      totalUnread: unreadData.resultSizeEstimate || 0,
+      messages: details.filter(Boolean).map(msg => {
+        const headers = (msg.payload?.headers || []);
+        const get = name => headers.find(h => h.name === name)?.value || '';
+        return {
+          subject: get('Subject'),
+          from: get('From').replace(/<[^>]+>/g,'').trim(),
+          date: get('Date'),
+          isUnread: (msg.labelIds || []).includes('UNREAD'),
+          snippet: (msg.snippet || '').substring(0, 140),
+        };
+      }),
+      labels: (labelData.labels || []).filter(l => l.type === 'user').map(l => l.name),
+    };
+    conn.lastSync = new Date().toISOString();
+    savePAConnections();
+  } catch(e) {
+    conn.error = e.message.includes('expired') || e.message.includes('401') ? 'Token expired — reconnect to refresh.' : e.message;
+  }
+}
+
+async function syncGoogleDrive() {
+  const conn = paConnections.gdrive;
+  if (!conn?.enabled || !conn.token) return;
+  conn.error = null;
+  try {
+    const h = { Authorization: `Bearer ${conn.token}` };
+
+    // Recent files
+    const recentRes = await fetch("https://www.googleapis.com/drive/v3/files?orderBy=modifiedTime+desc&pageSize=15&fields=files(id,name,mimeType,modifiedTime,size,webViewLink,owners)", { headers: h });
+    if (!recentRes.ok) throw new Error(recentRes.status === 401 ? 'Token expired' : `Error ${recentRes.status}`);
+    const recentData = await recentRes.json();
+
+    // Shared with me
+    const sharedRes = await fetch("https://www.googleapis.com/drive/v3/files?q=sharedWithMe&orderBy=modifiedTime+desc&pageSize=8&fields=files(id,name,mimeType,modifiedTime,owners)", { headers: h });
+    const sharedData = sharedRes.ok ? await sharedRes.json() : { files: [] };
+
+    const mimeLabel = t => ({
+      'application/vnd.google-apps.document': 'Doc',
+      'application/vnd.google-apps.spreadsheet': 'Sheet',
+      'application/vnd.google-apps.presentation': 'Slides',
+      'application/vnd.google-apps.folder': 'Folder',
+    }[t] || 'File');
+
+    conn.data = {
+      recent: (recentData.files || []).map(f => ({
+        name: f.name,
+        type: mimeLabel(f.mimeType),
+        modified: f.modifiedTime,
+        url: f.webViewLink,
+        size: f.size,
+      })),
+      sharedWithMe: (sharedData.files || []).map(f => ({
+        name: f.name,
+        type: mimeLabel(f.mimeType),
+        owner: f.owners?.[0]?.displayName || '',
+        modified: f.modifiedTime,
+      })),
+    };
+    conn.lastSync = new Date().toISOString();
+    savePAConnections();
+  } catch(e) {
+    conn.error = e.message.includes('expired') || e.message.includes('401') ? 'Token expired — reconnect to refresh.' : e.message;
+  }
+}
+
+async function syncSlack() {
+  const conn = paConnections.slack;
+  if (!conn?.enabled || !conn.token) return;
+  conn.error = null;
+  try {
+    const h = { Authorization: `Bearer ${conn.token}` };
+
+    // List public channels
+    const chanRes = await fetch('https://slack.com/api/conversations.list?types=public_channel&limit=20&exclude_archived=true', { headers: h });
+    const chanData = chanRes.ok ? await chanRes.json() : {};
+    if (chanData.error) throw new Error(chanData.error);
+
+    const channels = (chanData.channels || []).slice(0, 8);
+
+    // Get recent messages from general/first channel
+    let recentMessages = [];
+    if (channels.length) {
+      const general = channels.find(c => c.name === 'general') || channels[0];
+      const histRes = await fetch(`https://slack.com/api/conversations.history?channel=${general.id}&limit=10`, { headers: h });
+      if (histRes.ok) {
+        const histData = await histRes.json();
+        recentMessages = (histData.messages || []).filter(m => m.type === 'message' && m.text).map(m => ({
+          channel: general.name,
+          text: m.text.substring(0, 160),
+          ts: new Date(parseFloat(m.ts) * 1000).toLocaleString(),
+          user: m.user || 'bot',
+        }));
+      }
+    }
+
+    conn.data = {
+      channels: channels.map(c => ({ name: c.name, topic: c.topic?.value?.substring(0,80)||'', members: c.num_members })),
+      recentMessages,
+    };
+    conn.lastSync = new Date().toISOString();
+    savePAConnections();
+  } catch(e) {
+    conn.error = e.message === 'invalid_auth' ? 'Invalid token — check and reconnect.' : e.message;
+  }
+}
+
+async function syncGitHub() {
+  const conn = paConnections.github;
+  if (!conn?.enabled) return;
+  conn.error = null;
+  try {
+    const h = { Authorization: `Bearer ${GITHUB_TOKEN}`, Accept: 'application/vnd.github.v3+json' };
+    const repo = 'ElectrodeMT/Electrode-Calendar';
+
+    // Recent commits
+    const commitRes = await fetch(`https://api.github.com/repos/${repo}/commits?per_page=10`, { headers: h });
+    // Open issues
+    const issueRes  = await fetch(`https://api.github.com/repos/${repo}/issues?state=open&per_page=8`, { headers: h });
+    // Open PRs
+    const prRes     = await fetch(`https://api.github.com/repos/${repo}/pulls?state=open&per_page=5`, { headers: h });
+
+    const [commits, issues, prs] = await Promise.all([
+      commitRes.ok ? commitRes.json() : [],
+      issueRes.ok  ? issueRes.json()  : [],
+      prRes.ok     ? prRes.json()     : [],
+    ]);
+
+    conn.data = {
+      repo,
+      recentCommits: commits.slice(0,8).map(c => ({
+        sha: c.sha?.substring(0,7),
+        message: c.commit?.message?.split('\n')[0].substring(0,100),
+        author: c.commit?.author?.name,
+        date: c.commit?.author?.date,
+      })),
+      openIssues: issues.map(i => ({ number: i.number, title: i.title, state: i.state, labels: i.labels?.map(l=>l.name) })),
+      openPRs: prs.map(p => ({ number: p.number, title: p.title, author: p.user?.login, branch: p.head?.ref })),
+    };
+    conn.lastSync = new Date().toISOString();
+  } catch(e) { conn.error = e.message; }
+}
+
+async function syncAllConnections(showNotice = false) {
+  const active = Object.keys(paConnections).filter(k => paConnections[k].enabled);
+  if (!active.length) return;
+
+  if (showNotice) appendPAMessage('assistant', `↻ Syncing ${active.length} connected service${active.length>1?'s':''}…`);
+
+  await Promise.allSettled([
+    paConnections.ms365?.enabled  ? syncMicrosoftGraph() : Promise.resolve(),
+    paConnections.gmail?.enabled  ? syncGmail()          : Promise.resolve(),
+    paConnections.gdrive?.enabled ? syncGoogleDrive()    : Promise.resolve(),
+    paConnections.slack?.enabled  ? syncSlack()          : Promise.resolve(),
+    paConnections.github?.enabled ? syncGitHub()         : Promise.resolve(),
+  ]);
+
+  renderConnectionsList();
+  renderPAFocusStrip();
+
+  if (showNotice) {
+    const errors = active.filter(k => paConnections[k].error);
+    const msg = errors.length
+      ? `⚠️ Sync complete — ${active.length - errors.length} OK, ${errors.length} error(s): ${errors.join(', ')}`
+      : `✅ All ${active.length} services synced successfully`;
+    appendPAMessage('assistant', msg);
+  }
+}
+
+// ── Connections UI ────────────────────────────────────────────────────────────
+
+function toggleConnectionsDrawer() {
+  const drawer = document.getElementById('pa-connections-drawer');
+  if (!drawer) return;
+  const open = drawer.style.display !== 'none';
+  drawer.style.display = open ? 'none' : 'flex';
+  if (!open) renderConnectionsList();
+}
+
+function renderConnectionsList() {
+  const list = document.getElementById('pa-connections-list');
+  if (!list) return;
+  list.innerHTML = '';
+
+  Object.entries(PA_SERVICE_DEFS).forEach(([key, def]) => {
+    const conn = paConnections[key] || {};
+    const isConnected = conn.enabled && !conn.error;
+    const hasError = !!conn.error;
+    const syncAgo = conn.lastSync ? timeSince(new Date(conn.lastSync)) : null;
+
+    const card = document.createElement('div');
+    card.style.cssText = `background:${isConnected ? 'rgba(16,185,129,0.06)' : 'var(--surface2)'};border:1px solid ${isConnected?'rgba(16,185,129,0.2)':hasError?'rgba(239,68,68,0.2)':'var(--border)'};border-radius:8px;padding:8px 10px;display:flex;align-items:center;gap:8px;`;
+
+    const statusDot = `<span style="width:7px;height:7px;border-radius:50%;flex-shrink:0;background:${isConnected?'#10b981':hasError?'#ef4444':'var(--text3)'}"></span>`;
+    const syncInfo = conn.lastSync ? `<span style="font-size:9px;color:var(--text3);font-family:'DM Mono',monospace;">${syncAgo}</span>` : '';
+    const errorInfo = hasError ? `<div style="font-size:9px;color:#ef4444;font-family:'DM Mono',monospace;margin-top:2px;">${conn.error}</div>` : '';
+
+    const actions = def.readOnly
+      ? `<button onclick="syncGitHub().then(renderConnectionsList)" class="btn btn-ghost" style="font-size:9px;padding:3px 7px;flex-shrink:0;">↻</button>`
+      : isConnected
+        ? `<div style="display:flex;gap:4px;flex-shrink:0;">
+             <button onclick="syncService('${key}')" class="btn btn-ghost" style="font-size:9px;padding:3px 7px;">↻</button>
+             <button onclick="disconnectService('${key}')" class="btn btn-ghost" style="font-size:9px;padding:3px 7px;color:#ef4444;">✕</button>
+           </div>`
+        : `<button onclick="openConnectionSetup('${key}')" class="btn btn-primary" style="font-size:9px;padding:3px 9px;flex-shrink:0;background:linear-gradient(135deg,#3b82f6,#7c3aed);">Connect</button>`;
+
+    card.innerHTML = `
+      ${statusDot}
+      <div style="flex:1;min-width:0;">
+        <div style="display:flex;align-items:center;gap:5px;">
+          <span style="font-size:11px;">${def.icon}</span>
+          <span style="font-size:11px;font-weight:600;color:var(--text);">${def.label}</span>
+          ${syncInfo}
+        </div>
+        <div style="font-size:9px;color:var(--text3);font-family:'DM Mono',monospace;">${isConnected && conn.data ? getConnectionSummary(key) : def.description}</div>
+        ${errorInfo}
+      </div>
+      ${actions}`;
+    list.appendChild(card);
+  });
+}
+
+function getConnectionSummary(key) {
+  const d = paConnections[key]?.data;
+  if (!d) return PA_SERVICE_DEFS[key]?.description || '';
+  if (key === 'ms365') return `${d.emails?.filter(e=>!e.isRead).length||0} unread · ${d.calendar?.length||0} meetings today · ${d.oneDrive?.length||0} recent files`;
+  if (key === 'gmail') return `${d.totalUnread||0} unread · ${d.messages?.length||0} messages fetched`;
+  if (key === 'gdrive') return `${d.recent?.length||0} recent files · ${d.sharedWithMe?.length||0} shared`;
+  if (key === 'slack') return `${d.channels?.length||0} channels · ${d.recentMessages?.length||0} messages`;
+  if (key === 'github') return `${d.recentCommits?.length||0} commits · ${d.openIssues?.length||0} issues · ${d.openPRs?.length||0} PRs`;
+  if (key === 'firebase') return fbDb ? 'Connected & syncing' : 'Not configured';
+  return '';
+}
+
+function timeSince(date) {
+  const s = Math.floor((new Date() - date) / 1000);
+  if (s < 60) return 'just now';
+  const m = Math.floor(s / 60);
+  if (m < 60) return `${m}m ago`;
+  return `${Math.floor(m/60)}h ago`;
+}
+
+function openConnectionSetup(key) {
+  const def = PA_SERVICE_DEFS[key];
+  if (!def || def.readOnly) return;
+
+  const overlay = document.getElementById('pa-conn-setup-overlay');
+  const title   = document.getElementById('pa-conn-setup-title');
+  const body    = document.getElementById('pa-conn-setup-body');
+  if (!overlay || !title || !body) return;
+
+  title.innerHTML = `${def.icon} Connect ${def.label}`;
+  body.innerHTML = `
+    <div style="font-size:11px;color:var(--text2);margin-bottom:12px;line-height:1.6;">${def.description}</div>
+
+    <div style="background:rgba(59,130,246,0.08);border:1px solid rgba(59,130,246,0.2);border-radius:8px;padding:10px 12px;margin-bottom:12px;">
+      <div style="font-size:10px;font-weight:600;color:#3b82f6;margin-bottom:4px;">HOW TO GET YOUR TOKEN</div>
+      <div style="font-size:10px;color:var(--text2);line-height:1.6;">${def.tokenHint}</div>
+    </div>
+
+    <div style="margin-bottom:10px;">
+      <div style="font-size:10px;font-weight:600;color:var(--text);margin-bottom:5px;">${def.tokenLabel}</div>
+      <textarea id="pa-conn-token-input" placeholder="${def.tokenPlaceholder}" rows="3"
+        style="width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:6px;padding:8px 10px;font-family:'DM Mono',monospace;font-size:10px;color:var(--text);resize:vertical;box-sizing:border-box;outline:none;">${paConnections[key]?.token || ''}</textarea>
+    </div>
+
+    <div style="display:flex;gap:8px;">
+      <button onclick="saveConnectionToken('${key}')" class="btn btn-primary" style="flex:1;background:linear-gradient(135deg,#3b82f6,#7c3aed);">✓ Connect &amp; Sync</button>
+      <button onclick="closeConnectionSetup()" class="btn btn-ghost" style="flex:1;">Cancel</button>
+    </div>
+
+    <div id="pa-conn-setup-status" style="margin-top:8px;font-size:10px;font-family:'DM Mono',monospace;color:var(--text3);min-height:16px;"></div>`;
+
+  overlay.style.display = 'flex';
+}
+
+function closeConnectionSetup() {
+  const overlay = document.getElementById('pa-conn-setup-overlay');
+  if (overlay) overlay.style.display = 'none';
+}
+
+async function saveConnectionToken(key) {
+  const input = document.getElementById('pa-conn-token-input');
+  const statusEl = document.getElementById('pa-conn-setup-status');
+  const token = input?.value.trim();
+  if (!token) { if (statusEl) statusEl.textContent = '⚠️ Please paste a token.'; return; }
+
+  if (statusEl) statusEl.textContent = '↻ Connecting…';
+
+  paConnections[key] = { enabled: true, token, data: null, lastSync: null, error: null };
+  savePAConnections();
+
+  // Sync immediately to validate
+  await syncService(key);
+
+  const conn = paConnections[key];
+  if (conn.error) {
+    if (statusEl) statusEl.textContent = `⚠️ ${conn.error}`;
+  } else {
+    closeConnectionSetup();
+    renderConnectionsList();
+    appendPAMessage('assistant', `✅ **${PA_SERVICE_DEFS[key].label}** connected successfully! ${getConnectionSummary(key)}\n\nI now have full access to your ${PA_SERVICE_DEFS[key].label} data. Try asking me about your emails, files, or anything from this service.`);
+    // Close drawer if open after success
+    const drawer = document.getElementById('pa-connections-drawer');
+    if (drawer) drawer.style.display = 'flex';
+    renderConnectionsList();
+  }
+}
+
+async function syncService(key) {
+  if (key === 'ms365')   await syncMicrosoftGraph();
+  else if (key === 'gmail')   await syncGmail();
+  else if (key === 'gdrive')  await syncGoogleDrive();
+  else if (key === 'slack')   await syncSlack();
+  else if (key === 'github')  await syncGitHub();
+  renderConnectionsList();
+}
+
+function disconnectService(key) {
+  if (paConnections[key]) {
+    paConnections[key] = { enabled: false, token: '', data: null, lastSync: null, error: null };
+    savePAConnections();
+    renderConnectionsList();
+    appendPAMessage('assistant', `🔌 **${PA_SERVICE_DEFS[key].label}** disconnected. Your stored token has been cleared.`);
+  }
+}
+
+// ── External data → PA system prompt ─────────────────────────────────────────
+
+function getExternalDataContext() {
+  const sections = [];
+  const connected = Object.keys(paConnections).filter(k => paConnections[k].enabled && paConnections[k].data);
+  if (!connected.length) return '';
+
+  sections.push('━━━ CONNECTED SERVICES DATA ━━━');
+
+  // Microsoft 365
+  if (paConnections.ms365?.data) {
+    const d = paConnections.ms365.data;
+    sections.push(`\nMICROSOFT 365 (synced ${timeSince(new Date(paConnections.ms365.lastSync))})`);
+    if (d.emails?.length) {
+      const unread = d.emails.filter(e=>!e.isRead);
+      sections.push(`Outlook — ${unread.length} unread of ${d.emails.length} recent emails:`);
+      d.emails.slice(0,8).forEach(e => sections.push(`  [${e.isRead?'READ':'UNREAD'}${e.important?' ★':''}] From: ${e.from} | ${e.subject} | ${new Date(e.time).toLocaleString()} | ${e.preview}`));
+    }
+    if (d.calendar?.length) {
+      sections.push(`Calendar — ${d.calendar.length} event(s) today:`);
+      d.calendar.forEach(e => sections.push(`  ${e.title} | ${new Date(e.start).toLocaleTimeString()}–${new Date(e.end).toLocaleTimeString()} | Org: ${e.organizer}${e.location?' | '+e.location:''}`));
+    }
+    if (d.oneDrive?.length) {
+      sections.push(`OneDrive — ${d.oneDrive.length} recent files:`);
+      d.oneDrive.slice(0,6).forEach(f => sections.push(`  ${f.isFile?'📄':'📁'} ${f.name} | Modified: ${new Date(f.modified).toLocaleDateString()}`));
+    }
+    if (d.teamMessages?.length) {
+      sections.push(`Teams — ${d.teamMessages.length} recent messages:`);
+      d.teamMessages.forEach(m => sections.push(`  [${m.from}] ${m.preview}`));
+    }
+    if (d.sharePoint?.length) {
+      sections.push(`SharePoint sites: ${d.sharePoint.map(s=>s.name).join(', ')}`);
+    }
+  }
+
+  // Gmail
+  if (paConnections.gmail?.data) {
+    const d = paConnections.gmail.data;
+    sections.push(`\nGMAIL (${d.totalUnread} unread of ${d.messages?.length} fetched):`);
+    (d.messages||[]).slice(0,8).forEach(m => sections.push(`  [${m.isUnread?'UNREAD':'read'}] ${m.from} | ${m.subject} | ${m.snippet}`));
+    if (d.labels?.length) sections.push(`Labels: ${d.labels.join(', ')}`);
+  }
+
+  // Google Drive
+  if (paConnections.gdrive?.data) {
+    const d = paConnections.gdrive.data;
+    sections.push(`\nGOOGLE DRIVE — ${d.recent?.length} recent files, ${d.sharedWithMe?.length} shared with you:`);
+    (d.recent||[]).slice(0,6).forEach(f => sections.push(`  [${f.type}] ${f.name} | Modified: ${new Date(f.modified).toLocaleDateString()}`));
+    if (d.sharedWithMe?.length) {
+      sections.push('Shared with you:');
+      d.sharedWithMe.slice(0,4).forEach(f => sections.push(`  [${f.type}] ${f.name} — from ${f.owner}`));
+    }
+  }
+
+  // Slack
+  if (paConnections.slack?.data) {
+    const d = paConnections.slack.data;
+    sections.push(`\nSLACK — ${d.channels?.length} channels:`);
+    if (d.recentMessages?.length) {
+      sections.push('Recent messages:');
+      d.recentMessages.forEach(m => sections.push(`  [#${m.channel}] ${m.text}`));
+    }
+  }
+
+  // GitHub
+  if (paConnections.github?.data) {
+    const d = paConnections.github.data;
+    sections.push(`\nGITHUB — ${d.repo}:`);
+    if (d.recentCommits?.length) {
+      sections.push('Recent commits:');
+      d.recentCommits.slice(0,5).forEach(c => sections.push(`  [${c.sha}] ${c.message} (${c.author})`));
+    }
+    if (d.openIssues?.length) sections.push(`Open issues: ${d.openIssues.map(i=>`#${i.number} ${i.title}`).join(' | ')}`);
+    if (d.openPRs?.length)    sections.push(`Open PRs: ${d.openPRs.map(p=>`#${p.number} ${p.title}`).join(' | ')}`);
+  }
+
+  return sections.join('\n');
+}
+
+// ── PA Actions — Claude can trigger these from the 🧠 Me tab ─────────────────
+
+async function executePAAction(action) {
+  const service = action.service;
+  switch(action.type) {
+
+    case 'PA_SYNC':
+      await syncService(service || 'all');
+      return `✅ ${service ? PA_SERVICE_DEFS[service]?.label : 'All services'} synced`;
+
+    case 'PA_SEARCH_EMAILS': {
+      const conn = paConnections[service === 'ms365' ? 'ms365' : 'gmail'];
+      if (!conn?.enabled || !conn.token) return `⚠️ ${service} not connected`;
+      const q = action.query || '';
+      let results = [];
+      if (service === 'ms365') {
+        const r = await fetch(`https://graph.microsoft.com/v1.0/me/messages?$search="${encodeURIComponent(q)}"&$top=8&$select=subject,from,receivedDateTime,isRead,bodyPreview`, { headers: { Authorization: `Bearer ${conn.token}` } });
+        const d = r.ok ? await r.json() : {};
+        results = (d.value||[]).map(m => `[${m.isRead?'read':'UNREAD'}] ${m.from?.emailAddress?.name}: ${m.subject} — ${(m.bodyPreview||'').substring(0,80)}`);
+      } else {
+        const r = await fetch(`https://gmail.googleapis.com/gmail/v1/users/me/messages?q=${encodeURIComponent(q)}&maxResults=8`, { headers: { Authorization: `Bearer ${conn.token}` } });
+        const d = r.ok ? await r.json() : {};
+        results = (d.messages||[]).map(m => `Message ID: ${m.id}`);
+      }
+      return results.length ? `📧 Search results for "${q}":\n${results.join('\n')}` : `No results for "${q}"`;
+    }
+
+    case 'PA_LIST_FILES': {
+      const folder = action.folder || '';
+      if (paConnections.gdrive?.enabled && paConnections.gdrive.token) {
+        const q = folder ? `name contains '${folder}'` : '';
+        const r = await fetch(`https://www.googleapis.com/drive/v3/files?${q?'q='+encodeURIComponent(q)+'&':''}orderBy=modifiedTime+desc&pageSize=10&fields=files(name,mimeType,modifiedTime,webViewLink)`, { headers: { Authorization: `Bearer ${paConnections.gdrive.token}` } });
+        const d = r.ok ? await r.json() : {};
+        return (d.files||[]).map(f=>`📄 ${f.name} — ${new Date(f.modifiedTime).toLocaleDateString()}`).join('\n') || 'No files found';
+      }
+      if (paConnections.ms365?.enabled && paConnections.ms365.token) {
+        const r = await fetch(`https://graph.microsoft.com/v1.0/me/drive/root/children?$select=name,lastModifiedDateTime,size,file,folder`, { headers: { Authorization: `Bearer ${paConnections.ms365.token}` } });
+        const d = r.ok ? await r.json() : {};
+        return (d.value||[]).map(f=>`${f.file?'📄':'📁'} ${f.name} — ${new Date(f.lastModifiedDateTime).toLocaleDateString()}`).join('\n') || 'No files found';
+      }
+      return '⚠️ No file service connected';
+    }
+
+    case 'PA_DRAFT_EMAIL': {
+      // Creates a draft and shows it in the conversation
+      const service2 = action.service || 'gmail';
+      const to = action.to || '';
+      const subject = action.subject || '';
+      const body = action.body || '';
+      if (service2 === 'gmail' && paConnections.gmail?.enabled) {
+        const raw = btoa(`To: ${to}\r\nSubject: ${subject}\r\nContent-Type: text/plain\r\n\r\n${body}`).replace(/\+/g,'-').replace(/\//g,'_');
+        const r = await fetch('https://gmail.googleapis.com/gmail/v1/users/me/drafts', { method:'POST', headers:{ Authorization:`Bearer ${paConnections.gmail.token}`, 'Content-Type':'application/json' }, body:JSON.stringify({ message:{ raw } }) });
+        return r.ok ? `✅ Gmail draft created:\nTo: ${to}\nSubject: ${subject}\n\n${body}` : `⚠️ Failed to create draft`;
+      }
+      return `📝 Draft prepared (not sent):\nTo: ${to}\nSubject: ${subject}\n\n${body}`;
+    }
+
+    case 'PA_IMPROVE':
+      applyAutoImprovement(action.instruction, action.rationale);
+      return null; // handled inside applyAutoImprovement
+
+    default:
+      return null;
+  }
+}
+
 function executeCalendarAction(action) {
+  paLogAction(action);
   switch(action.type) {
     case 'CREATE_TASK': {
       const tn = genTaskNumber();
@@ -8820,6 +10647,7 @@ function executeCalendarAction(action) {
       githubInjectCSS(css, desc).then(ok => {
         if (ok) githubShowDeployStatus();
       });
+      paLogPush('CSS', desc);
       logLiveEdit('🚀', `GitHub CSS push queued: <strong>${desc}</strong>`);
       return `🚀 Pushing CSS to GitHub: "${desc}" — will be live in ~60s`;
     }
@@ -8831,6 +10659,7 @@ function executeCalendarAction(action) {
       githubInjectJS(js, desc).then(ok => {
         if (ok) githubShowDeployStatus();
       });
+      paLogPush('JS', desc);
       logLiveEdit('🚀', `GitHub JS push queued: <strong>${desc}</strong>`);
       return `🚀 Pushing JS to GitHub: "${desc}" — will be live in ~60s`;
     }
@@ -8843,6 +10672,7 @@ function executeCalendarAction(action) {
       githubReplaceSection(search, replace, desc).then(ok => {
         if (ok) githubShowDeployStatus();
       });
+      paLogPush('HTML', desc);
       logLiveEdit('🚀', `GitHub HTML push queued: <strong>${desc}</strong>`);
       return `🚀 Pushing HTML to GitHub: "${desc}" — will be live in ~60s`;
     }
