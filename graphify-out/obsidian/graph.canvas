@@ -1,0 +1,766 @@
+{
+  "nodes": [
+    {
+      "id": "g0",
+      "type": "group",
+      "label": "Personal Assistant AI",
+      "x": 0,
+      "y": 0,
+      "width": 660,
+      "height": 420,
+      "color": "1"
+    },
+    {
+      "id": "n_index_anthropic_api_integration",
+      "type": "file",
+      "file": "Anthropic Claude API Integration.md",
+      "x": 20,
+      "y": 80,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_index_pa_memory",
+      "type": "file",
+      "file": "Personal Assistant Memory (loadPAMemory).md",
+      "x": 220,
+      "y": 80,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_index_personal_assistant_tab",
+      "type": "file",
+      "file": "Personal Assistant Tab (PA).md",
+      "x": 420,
+      "y": 80,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_index_generate_daily_briefing",
+      "type": "file",
+      "file": "generateDailyBriefing Function.md",
+      "x": 20,
+      "y": 160,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_index_process_claude",
+      "type": "file",
+      "file": "processClaude Function.md",
+      "x": 220,
+      "y": 160,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_index_send_to_claude_ai",
+      "type": "file",
+      "file": "sendToClaudeAI Function.md",
+      "x": 420,
+      "y": 160,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_index_send_to_pa",
+      "type": "file",
+      "file": "sendToPA Function (Personal Assistant).md",
+      "x": 20,
+      "y": 240,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "g1",
+      "type": "group",
+      "label": "App Identity & UI",
+      "x": 740,
+      "y": 0,
+      "width": 660,
+      "height": 400,
+      "color": "2"
+    },
+    {
+      "id": "n_index_dm_font_family",
+      "type": "file",
+      "file": "DM Font Family (DM Serif Display, DM Mono, DM Sans).md",
+      "x": 760,
+      "y": 80,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_index_electrode_maintenance_team_app",
+      "type": "file",
+      "file": "Electrode Maintenance Team Calendar App.md",
+      "x": 960,
+      "y": 80,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_index_f1_background_system",
+      "type": "file",
+      "file": "F1 Racing Background Visual System.md",
+      "x": 1160,
+      "y": 80,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_electrode_calendar_claude_graphify_instructions",
+      "type": "file",
+      "file": "Graphify Knowledge Graph Instructions.md",
+      "x": 760,
+      "y": 160,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_index_share_modal",
+      "type": "file",
+      "file": "Share Calendar Modal.md",
+      "x": 960,
+      "y": 160,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_index_download_calendar",
+      "type": "file",
+      "file": "downloadCalendar Function.md",
+      "x": 1160,
+      "y": 160,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "g2",
+      "type": "group",
+      "label": "Data Persistence Layer",
+      "x": 1480,
+      "y": 0,
+      "width": 660,
+      "height": 400,
+      "color": "3"
+    },
+    {
+      "id": "n_index_announcements_system",
+      "type": "file",
+      "file": "Announcements System (PostPinFeed).md",
+      "x": 1500,
+      "y": 80,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_index_firebase_realtime_sync",
+      "type": "file",
+      "file": "Firebase Realtime Database Sync.md",
+      "x": 1700,
+      "y": 80,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_index_fb_save_calendar_data",
+      "type": "file",
+      "file": "fbSaveCalendarData Function.md",
+      "x": 1900,
+      "y": 80,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_index_load_from_storage",
+      "type": "file",
+      "file": "loadFromStorage Function.md",
+      "x": 1500,
+      "y": 160,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_index_local_storage_persistence",
+      "type": "file",
+      "file": "localStorage Persistence (Offline Cache).md",
+      "x": 1700,
+      "y": 160,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_index_save_to_storage",
+      "type": "file",
+      "file": "saveToStorage Function.md",
+      "x": 1900,
+      "y": 160,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "g3",
+      "type": "group",
+      "label": "CMMS Advisor Panel",
+      "x": 0,
+      "y": 500,
+      "width": 660,
+      "height": 400,
+      "color": "4"
+    },
+    {
+      "id": "n_index_live_edit_bar",
+      "type": "file",
+      "file": "Admin Live Edit Bar (Admin-Only Command Bar).md",
+      "x": 20,
+      "y": 580,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_index_cmms_evolution_concept",
+      "type": "file",
+      "file": "CMMS (Computerized Maintenance Management System) Evolution.md",
+      "x": 220,
+      "y": 580,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_index_cmms_roadmap_tab",
+      "type": "file",
+      "file": "CMMS Evolution Roadmap Tab.md",
+      "x": 420,
+      "y": 580,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_index_cmms_proposals_tab",
+      "type": "file",
+      "file": "CMMS Upgrade Proposals Tab.md",
+      "x": 20,
+      "y": 660,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_index_claude_ai_panel",
+      "type": "file",
+      "file": "Claude AI Command Panel (CMMS Advisor).md",
+      "x": 220,
+      "y": 660,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_index_daily_improvements_tab",
+      "type": "file",
+      "file": "Daily Micro-Improvements Tab.md",
+      "x": 420,
+      "y": 660,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "g4",
+      "type": "group",
+      "label": "Initialization & Storage",
+      "x": 740,
+      "y": 500,
+      "width": 660,
+      "height": 400,
+      "color": "5"
+    },
+    {
+      "id": "n_index_login_gate_screens",
+      "type": "file",
+      "file": "Login Gate Screens (ABCD).md",
+      "x": 760,
+      "y": 580,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_index_files_modal",
+      "type": "file",
+      "file": "Team Files Modal (Shared File Storage).md",
+      "x": 960,
+      "y": 580,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_index_init_function",
+      "type": "file",
+      "file": "init Function (App Initialization).md",
+      "x": 1160,
+      "y": 580,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_index_load_cmss_from_storage",
+      "type": "file",
+      "file": "loadCMSSFromStorage Function.md",
+      "x": 760,
+      "y": 660,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_index_load_daily_improvements",
+      "type": "file",
+      "file": "loadDailyImprovements Function.md",
+      "x": 960,
+      "y": 660,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_index_load_history",
+      "type": "file",
+      "file": "loadHistory Function (EventAudit History).md",
+      "x": 1160,
+      "y": 660,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "g5",
+      "type": "group",
+      "label": "Calendar & Reporting",
+      "x": 1480,
+      "y": 500,
+      "width": 660,
+      "height": 400,
+      "color": "6"
+    },
+    {
+      "id": "n_index_calendar_views",
+      "type": "file",
+      "file": "Calendar Views (MonthWeekDay).md",
+      "x": 1500,
+      "y": 580,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_index_email_log",
+      "type": "file",
+      "file": "Email Log (Outgoing Notification Log).md",
+      "x": 1700,
+      "y": 580,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_index_insights_system",
+      "type": "file",
+      "file": "Smart Insights  Recommendations System.md",
+      "x": 1900,
+      "y": 580,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_index_report_modal",
+      "type": "file",
+      "file": "Task Completion Report Modal.md",
+      "x": 1500,
+      "y": 660,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_index_task_management",
+      "type": "file",
+      "file": "Task Management (createassigncompletedelete).md",
+      "x": 1700,
+      "y": 660,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "g6",
+      "type": "group",
+      "label": "Auth & Permissions",
+      "x": 0,
+      "y": 980,
+      "width": 600,
+      "height": 400,
+      "color": "1"
+    },
+    {
+      "id": "n_index_admin_credentials",
+      "type": "file",
+      "file": "Admin Credentials (SHA-256 Hashed, Never Hardcoded).md",
+      "x": 20,
+      "y": 1060,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_index_auth_system",
+      "type": "file",
+      "file": "Authentication and Invite System.md",
+      "x": 220,
+      "y": 1060,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_index_invite_system",
+      "type": "file",
+      "file": "Invite System (Invite Codes and Links).md",
+      "x": 420,
+      "y": 1060,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_index_roles_permissions",
+      "type": "file",
+      "file": "Roles and Permissions (CATEGORIES).md",
+      "x": 20,
+      "y": 1140,
+      "width": 180,
+      "height": 60
+    }
+  ],
+  "edges": [
+    {
+      "id": "e_electrode_calendar_claude_graphify_instructions_index_electrode_maintenance_team_app",
+      "fromNode": "n_electrode_calendar_claude_graphify_instructions",
+      "toNode": "n_index_electrode_maintenance_team_app",
+      "label": "references [EXTRACTED]"
+    },
+    {
+      "id": "e_index_electrode_maintenance_team_app_index_download_calendar",
+      "fromNode": "n_index_electrode_maintenance_team_app",
+      "toNode": "n_index_download_calendar",
+      "label": "references [INFERRED]"
+    },
+    {
+      "id": "e_index_electrode_maintenance_team_app_index_announcements_system",
+      "fromNode": "n_index_electrode_maintenance_team_app",
+      "toNode": "n_index_announcements_system",
+      "label": "implements [EXTRACTED]"
+    },
+    {
+      "id": "e_index_electrode_maintenance_team_app_index_auth_system",
+      "fromNode": "n_index_electrode_maintenance_team_app",
+      "toNode": "n_index_auth_system",
+      "label": "implements [EXTRACTED]"
+    },
+    {
+      "id": "e_index_electrode_maintenance_team_app_index_calendar_views",
+      "fromNode": "n_index_electrode_maintenance_team_app",
+      "toNode": "n_index_calendar_views",
+      "label": "implements [EXTRACTED]"
+    },
+    {
+      "id": "e_index_electrode_maintenance_team_app_index_claude_ai_panel",
+      "fromNode": "n_index_electrode_maintenance_team_app",
+      "toNode": "n_index_claude_ai_panel",
+      "label": "implements [EXTRACTED]"
+    },
+    {
+      "id": "e_index_electrode_maintenance_team_app_index_dm_font_family",
+      "fromNode": "n_index_electrode_maintenance_team_app",
+      "toNode": "n_index_dm_font_family",
+      "label": "references [EXTRACTED]"
+    },
+    {
+      "id": "e_index_electrode_maintenance_team_app_index_f1_background_system",
+      "fromNode": "n_index_electrode_maintenance_team_app",
+      "toNode": "n_index_f1_background_system",
+      "label": "implements [EXTRACTED]"
+    },
+    {
+      "id": "e_index_electrode_maintenance_team_app_index_files_modal",
+      "fromNode": "n_index_electrode_maintenance_team_app",
+      "toNode": "n_index_files_modal",
+      "label": "implements [EXTRACTED]"
+    },
+    {
+      "id": "e_index_electrode_maintenance_team_app_index_firebase_realtime_sync",
+      "fromNode": "n_index_electrode_maintenance_team_app",
+      "toNode": "n_index_firebase_realtime_sync",
+      "label": "implements [EXTRACTED]"
+    },
+    {
+      "id": "e_index_electrode_maintenance_team_app_index_insights_system",
+      "fromNode": "n_index_electrode_maintenance_team_app",
+      "toNode": "n_index_insights_system",
+      "label": "implements [EXTRACTED]"
+    },
+    {
+      "id": "e_index_electrode_maintenance_team_app_index_invite_system",
+      "fromNode": "n_index_electrode_maintenance_team_app",
+      "toNode": "n_index_invite_system",
+      "label": "implements [EXTRACTED]"
+    },
+    {
+      "id": "e_index_electrode_maintenance_team_app_index_report_modal",
+      "fromNode": "n_index_electrode_maintenance_team_app",
+      "toNode": "n_index_report_modal",
+      "label": "implements [EXTRACTED]"
+    },
+    {
+      "id": "e_index_electrode_maintenance_team_app_index_share_modal",
+      "fromNode": "n_index_electrode_maintenance_team_app",
+      "toNode": "n_index_share_modal",
+      "label": "implements [EXTRACTED]"
+    },
+    {
+      "id": "e_index_electrode_maintenance_team_app_index_task_management",
+      "fromNode": "n_index_electrode_maintenance_team_app",
+      "toNode": "n_index_task_management",
+      "label": "implements [EXTRACTED]"
+    },
+    {
+      "id": "e_index_firebase_realtime_sync_index_announcements_system",
+      "fromNode": "n_index_firebase_realtime_sync",
+      "toNode": "n_index_announcements_system",
+      "label": "shares_data_with [EXTRACTED]"
+    },
+    {
+      "id": "e_index_firebase_realtime_sync_index_fb_save_calendar_data",
+      "fromNode": "n_index_firebase_realtime_sync",
+      "toNode": "n_index_fb_save_calendar_data",
+      "label": "calls [EXTRACTED]"
+    },
+    {
+      "id": "e_index_firebase_realtime_sync_index_local_storage_persistence",
+      "fromNode": "n_index_firebase_realtime_sync",
+      "toNode": "n_index_local_storage_persistence",
+      "label": "conceptually_related_to [EXTRACTED]"
+    },
+    {
+      "id": "e_index_auth_system_index_admin_credentials",
+      "fromNode": "n_index_auth_system",
+      "toNode": "n_index_admin_credentials",
+      "label": "implements [EXTRACTED]"
+    },
+    {
+      "id": "e_index_auth_system_index_invite_system",
+      "fromNode": "n_index_auth_system",
+      "toNode": "n_index_invite_system",
+      "label": "implements [EXTRACTED]"
+    },
+    {
+      "id": "e_index_auth_system_index_roles_permissions",
+      "fromNode": "n_index_auth_system",
+      "toNode": "n_index_roles_permissions",
+      "label": "references [EXTRACTED]"
+    },
+    {
+      "id": "e_index_auth_system_index_init_function",
+      "fromNode": "n_index_auth_system",
+      "toNode": "n_index_init_function",
+      "label": "calls [EXTRACTED]"
+    },
+    {
+      "id": "e_index_roles_permissions_index_task_management",
+      "fromNode": "n_index_roles_permissions",
+      "toNode": "n_index_task_management",
+      "label": "references [EXTRACTED]"
+    },
+    {
+      "id": "e_index_claude_ai_panel_index_cmms_proposals_tab",
+      "fromNode": "n_index_claude_ai_panel",
+      "toNode": "n_index_cmms_proposals_tab",
+      "label": "implements [EXTRACTED]"
+    },
+    {
+      "id": "e_index_claude_ai_panel_index_cmms_roadmap_tab",
+      "fromNode": "n_index_claude_ai_panel",
+      "toNode": "n_index_cmms_roadmap_tab",
+      "label": "implements [EXTRACTED]"
+    },
+    {
+      "id": "e_index_claude_ai_panel_index_daily_improvements_tab",
+      "fromNode": "n_index_claude_ai_panel",
+      "toNode": "n_index_daily_improvements_tab",
+      "label": "implements [EXTRACTED]"
+    },
+    {
+      "id": "e_index_claude_ai_panel_index_live_edit_bar",
+      "fromNode": "n_index_claude_ai_panel",
+      "toNode": "n_index_live_edit_bar",
+      "label": "implements [EXTRACTED]"
+    },
+    {
+      "id": "e_index_claude_ai_panel_index_personal_assistant_tab",
+      "fromNode": "n_index_claude_ai_panel",
+      "toNode": "n_index_personal_assistant_tab",
+      "label": "implements [EXTRACTED]"
+    },
+    {
+      "id": "e_index_claude_ai_panel_index_send_to_claude_ai",
+      "fromNode": "n_index_claude_ai_panel",
+      "toNode": "n_index_send_to_claude_ai",
+      "label": "calls [EXTRACTED]"
+    },
+    {
+      "id": "e_index_send_to_claude_ai_index_anthropic_api_integration",
+      "fromNode": "n_index_send_to_claude_ai",
+      "toNode": "n_index_anthropic_api_integration",
+      "label": "implements [EXTRACTED]"
+    },
+    {
+      "id": "e_index_send_to_claude_ai_index_process_claude",
+      "fromNode": "n_index_send_to_claude_ai",
+      "toNode": "n_index_process_claude",
+      "label": "calls [EXTRACTED]"
+    },
+    {
+      "id": "e_index_send_to_pa_index_personal_assistant_tab",
+      "fromNode": "n_index_send_to_pa",
+      "toNode": "n_index_personal_assistant_tab",
+      "label": "calls [EXTRACTED]"
+    },
+    {
+      "id": "e_index_send_to_pa_index_anthropic_api_integration",
+      "fromNode": "n_index_send_to_pa",
+      "toNode": "n_index_anthropic_api_integration",
+      "label": "implements [EXTRACTED]"
+    },
+    {
+      "id": "e_index_personal_assistant_tab_index_pa_memory",
+      "fromNode": "n_index_personal_assistant_tab",
+      "toNode": "n_index_pa_memory",
+      "label": "shares_data_with [EXTRACTED]"
+    },
+    {
+      "id": "e_index_personal_assistant_tab_index_generate_daily_briefing",
+      "fromNode": "n_index_personal_assistant_tab",
+      "toNode": "n_index_generate_daily_briefing",
+      "label": "calls [EXTRACTED]"
+    },
+    {
+      "id": "e_index_cmms_proposals_tab_index_cmms_evolution_concept",
+      "fromNode": "n_index_cmms_proposals_tab",
+      "toNode": "n_index_cmms_evolution_concept",
+      "label": "implements [EXTRACTED]"
+    },
+    {
+      "id": "e_index_cmms_roadmap_tab_index_cmms_evolution_concept",
+      "fromNode": "n_index_cmms_roadmap_tab",
+      "toNode": "n_index_cmms_evolution_concept",
+      "label": "implements [EXTRACTED]"
+    },
+    {
+      "id": "e_index_save_to_storage_index_fb_save_calendar_data",
+      "fromNode": "n_index_save_to_storage",
+      "toNode": "n_index_fb_save_calendar_data",
+      "label": "calls [EXTRACTED]"
+    },
+    {
+      "id": "e_index_save_to_storage_index_local_storage_persistence",
+      "fromNode": "n_index_save_to_storage",
+      "toNode": "n_index_local_storage_persistence",
+      "label": "implements [EXTRACTED]"
+    },
+    {
+      "id": "e_index_save_to_storage_index_task_management",
+      "fromNode": "n_index_save_to_storage",
+      "toNode": "n_index_task_management",
+      "label": "calls [INFERRED]"
+    },
+    {
+      "id": "e_index_load_from_storage_index_init_function",
+      "fromNode": "n_index_load_from_storage",
+      "toNode": "n_index_init_function",
+      "label": "calls [EXTRACTED]"
+    },
+    {
+      "id": "e_index_load_from_storage_index_local_storage_persistence",
+      "fromNode": "n_index_load_from_storage",
+      "toNode": "n_index_local_storage_persistence",
+      "label": "implements [EXTRACTED]"
+    },
+    {
+      "id": "e_index_init_function_index_files_modal",
+      "fromNode": "n_index_init_function",
+      "toNode": "n_index_files_modal",
+      "label": "calls [EXTRACTED]"
+    },
+    {
+      "id": "e_index_init_function_index_load_cmss_from_storage",
+      "fromNode": "n_index_init_function",
+      "toNode": "n_index_load_cmss_from_storage",
+      "label": "calls [EXTRACTED]"
+    },
+    {
+      "id": "e_index_init_function_index_load_daily_improvements",
+      "fromNode": "n_index_init_function",
+      "toNode": "n_index_load_daily_improvements",
+      "label": "calls [EXTRACTED]"
+    },
+    {
+      "id": "e_index_init_function_index_load_history",
+      "fromNode": "n_index_init_function",
+      "toNode": "n_index_load_history",
+      "label": "calls [EXTRACTED]"
+    },
+    {
+      "id": "e_index_init_function_index_login_gate_screens",
+      "fromNode": "n_index_init_function",
+      "toNode": "n_index_login_gate_screens",
+      "label": "calls [EXTRACTED]"
+    },
+    {
+      "id": "e_index_init_function_index_pa_memory",
+      "fromNode": "n_index_init_function",
+      "toNode": "n_index_pa_memory",
+      "label": "calls [EXTRACTED]"
+    },
+    {
+      "id": "e_index_task_management_index_calendar_views",
+      "fromNode": "n_index_task_management",
+      "toNode": "n_index_calendar_views",
+      "label": "references [EXTRACTED]"
+    },
+    {
+      "id": "e_index_task_management_index_insights_system",
+      "fromNode": "n_index_task_management",
+      "toNode": "n_index_insights_system",
+      "label": "references [INFERRED]"
+    },
+    {
+      "id": "e_index_task_management_index_report_modal",
+      "fromNode": "n_index_task_management",
+      "toNode": "n_index_report_modal",
+      "label": "references [EXTRACTED]"
+    },
+    {
+      "id": "e_index_task_management_index_email_log",
+      "fromNode": "n_index_task_management",
+      "toNode": "n_index_email_log",
+      "label": "shares_data_with [INFERRED]"
+    },
+    {
+      "id": "e_index_generate_daily_briefing_index_anthropic_api_integration",
+      "fromNode": "n_index_generate_daily_briefing",
+      "toNode": "n_index_anthropic_api_integration",
+      "label": "implements [INFERRED]"
+    },
+    {
+      "id": "e_index_cmms_proposals_tab_index_daily_improvements_tab",
+      "fromNode": "n_index_cmms_proposals_tab",
+      "toNode": "n_index_daily_improvements_tab",
+      "label": "semantically_similar_to [INFERRED]"
+    },
+    {
+      "id": "e_index_announcements_system_index_insights_system",
+      "fromNode": "n_index_announcements_system",
+      "toNode": "n_index_insights_system",
+      "label": "semantically_similar_to [INFERRED]"
+    }
+  ]
+}
