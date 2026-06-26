@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
 """
-UserPromptSubmit hook — injects a mandatory skill-check reminder on every turn.
+UserPromptSubmit hook — mandatory skill-check reminder on every turn.
 
-Fires unconditionally for every user prompt in every session. Injects
-additionalContext telling Claude to scan installed skills before responding.
+Guaranteed delivery: the REMINDER constant is written to stdout in both
+the happy path AND in every exception handler. There is no code path that
+exits without emitting the reminder JSON.
 """
 
 import json
@@ -22,29 +23,31 @@ Step 4 — Only if ZERO skills match: respond inline.
 
 When in doubt, invoke the skill. Never skip this check."""
 
+OUTPUT = json.dumps({
+    "hookSpecificOutput": {
+        "hookEventName": "UserPromptSubmit",
+        "additionalContext": REMINDER,
+    }
+})
+
 
 def main():
-    # Consume stdin (required by hook protocol) but we don't need the payload.
     try:
         sys.stdin.read()
     except Exception:
-        pass
-
-    json.dump(
-        {
-            "hookSpecificOutput": {
-                "hookEventName": "UserPromptSubmit",
-                "additionalContext": REMINDER,
-            }
-        },
-        sys.stdout,
-    )
+        pass  # stdin failure cannot stop us
+    sys.stdout.write(OUTPUT)
+    sys.stdout.flush()
     sys.exit(0)
 
 
-if __name__ == "__main__":
+# Guarantee: even if main() itself raises, we still emit the reminder.
+try:
+    main()
+except Exception:
     try:
-        main()
+        sys.stdout.write(OUTPUT)
+        sys.stdout.flush()
     except Exception:
-        # Never block the turn on a hook failure.
-        sys.exit(0)
+        pass
+    sys.exit(0)

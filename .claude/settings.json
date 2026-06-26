@@ -1,0 +1,18 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-settings.json",
+  "hooks": {
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 ~/.claude/skill-check-hook.py"
+          }
+        ]
+      }
+    ]
+  },
+  "permissions": {
+    "allow": ["Skill"]
+  }
+}
