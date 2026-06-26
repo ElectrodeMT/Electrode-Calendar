@@ -14,12 +14,17 @@ REMINDER = """MANDATORY SKILL CHECK — runs before every response, no exception
 
 Installed skills: skill-creator, mcp-builder, webapp-testing, frontend-design,
 brand-guidelines, theme-factory, internal-comms, slack-gif-creator,
-algorithmic-art, canvas-design, doc-coauthoring, web-artifacts-builder.
+algorithmic-art, canvas-design, doc-coauthoring, web-artifacts-builder,
+ghost, OODA, L99.
 
 Step 1 — Does any installed skill match this request, even partially?
 Step 2 — If YES: invoke it via the Skill tool FIRST, then build your response.
 Step 3 — If multiple skills match: invoke all of them in logical order.
 Step 4 — Only if ZERO skills match: respond inline.
+
+ghost  → humanize tone, strip AI boilerplate, write like a person
+OODA   → strategic analysis, blind spot mapping, military decision loop
+L99    → expert/PhD mode, no simplification, principal-engineer depth
 
 When in doubt, invoke the skill. Never skip this check."""
 

@@ -90,6 +90,27 @@ When in doubt, invoke the skill. It costs nothing to load a skill that turns out
 - Mentions "mini-app", "single-file app", "no build step", "standalone HTML", "dashboard", "calculator", "interactive widget", "data table", or "demo page"
 - Needs a quick prototype that opens directly in a browser
 
+### ghost
+**Fire when:**
+- User invokes `/ghost` or says "ghost mode"
+- Mentions "humanize this", "make it sound less robotic", "write like a person", "strip the AI tone", "write like Reddit", "sound more human", or "less corporate"
+- Output sounds like it was written by a language model and needs to sound like a person
+- Any time the user wants conversational cadence over polished AI prose
+
+### OODA
+**Fire when:**
+- User invokes `/OODA` or says "use OODA"
+- Asks "what am I missing", "think through this strategically", "analyze before answering", "break down the risks", "map the blind spots", or "what's the decision here"
+- The question involves a decision with real risk, competing options, or unclear problem framing
+- Any time surface-level advice would be dangerous or useless
+
+### L99
+**Fire when:**
+- User invokes `/L99` or says "L99 mode"
+- Says "expert mode", "go deep", "PhD level", "principal engineer level", "stop simplifying", "don't dumb this down", or "assume I know what I'm doing"
+- The question is clearly expert-level and default responses would be too introductory
+- User wants maximum technical depth with no hand-holding
+
 ---
 
 ## Multi-Skill Composition
@@ -104,6 +125,9 @@ Some requests need more than one skill. Fire them in sequence:
 | "Create a new Claude skill" | `skill-creator` |
 | "Add a new external tool to Claude" | `mcp-builder` |
 | "Design a marketing page" | `canvas-design` → `frontend-design` → `brand-guidelines` |
+| "Strategic decision + human comms" | `OODA` → `ghost` |
+| "Deep technical analysis, human voice" | `L99` → `ghost` |
+| "Expert advice + strategic framing" | `L99` → `OODA` |
 
 ---
 
