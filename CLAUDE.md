@@ -162,6 +162,15 @@ When in doubt, invoke the skill. It costs nothing to load a skill that turns out
 - Any non-trivial feature build, refactor, or bug fix where getting it wrong costs real time
 - User says "plan first", "don't just write code", "review before done", or "test loop"
 
+### fable5
+**Fire when:**
+- User explicitly invokes `/fable5`, "use Fable", "fable mode", "best model", "most capable", or "throw the best at it"
+- Task requires architecture decisions with significant reversibility cost
+- Bug has already resisted 2+ solution attempts
+- Task spans 5+ files with non-obvious dependency chains
+- Long-form generation where structural consistency over 1000+ tokens is critical
+- Any request where getting it right the first time genuinely matters more than speed
+
 ---
 
 ## Multi-Skill Composition
@@ -181,6 +190,8 @@ Some requests need more than one skill. Fire them in sequence:
 | "Deep technical analysis, human voice" | `L99` → `ghost` |
 | "Expert advice + strategic framing" | `L99` → `OODA` |
 | "Implement + strategic framing" | `plan-driven-dev` → `L99` |
+| "Hard problem, best model" | `fable5` |
+| "Complex feature, best model" | `fable5` → `plan-driven-dev` |
 
 ---
 
