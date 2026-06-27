@@ -81,10 +81,14 @@ Installed skills (check BEFORE responding):
   skill-creator, mcp-builder, webapp-testing, frontend-design,
   brand-guidelines, theme-factory, internal-comms, slack-gif-creator,
   algorithmic-art, canvas-design, doc-coauthoring, web-artifacts-builder,
-  ghost, OODA, L99, remotion-developer.
+  ghost, OODA, L99, remotion-developer, plan-driven-dev.
 
   remotion-developer → ANY video, clip, animation, motion graphics, intro,
                         render, or Remotion request — trigger immediately.
+
+  plan-driven-dev    → ANY non-trivial coding task spanning multiple files:
+                        feature builds, refactors, bug fixes with test loops,
+                        or any request for "plan before coding" / "agentic coding".
 
 If any skill matches → invoke via Skill tool FIRST.
 Multiple matches → invoke all in logical order.

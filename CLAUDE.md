@@ -153,6 +153,15 @@ When in doubt, invoke the skill. It costs nothing to load a skill that turns out
 - Any request involving video output of any kind — short clips, long-form, social media videos, explainers, product demos
 - User wants to animate anything that results in a playable video file
 
+### plan-driven-dev
+**Fire when:**
+- User asks to "build this feature", "implement this", "architect then implement", "plan before coding", or "agentic coding"
+- Task spans multiple files, modules, or services
+- User provides an agent loop, actor/critic pattern, or automated test loop structure to follow
+- User pastes code scaffolding for an AI coding workflow (agent loop, patch tool, critic prompt, dependency graph)
+- Any non-trivial feature build, refactor, or bug fix where getting it wrong costs real time
+- User says "plan first", "don't just write code", "review before done", or "test loop"
+
 ---
 
 ## Multi-Skill Composition
@@ -163,13 +172,15 @@ Some requests need more than one skill. Fire them in sequence:
 |---|---|
 | "Build a branded UI component" | `brand-guidelines` → `frontend-design` |
 | "Generate a full design system" | `theme-factory` → `frontend-design` → `brand-guidelines` |
-| "Build and test a web app feature" | `web-artifacts-builder` → `webapp-testing` |
+| "Build and test a web app feature" | `plan-driven-dev` → `webapp-testing` |
+| "Build a complex feature with design" | `plan-driven-dev` → `frontend-design` → `brand-guidelines` |
 | "Create a new Claude skill" | `skill-creator` |
 | "Add a new external tool to Claude" | `mcp-builder` |
 | "Design a marketing page" | `canvas-design` → `frontend-design` → `brand-guidelines` |
 | "Strategic decision + human comms" | `OODA` → `ghost` |
 | "Deep technical analysis, human voice" | `L99` → `ghost` |
 | "Expert advice + strategic framing" | `L99` → `OODA` |
+| "Implement + strategic framing" | `plan-driven-dev` → `L99` |
 
 ---
 
