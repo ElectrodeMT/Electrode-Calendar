@@ -81,7 +81,10 @@ Installed skills (check BEFORE responding):
   skill-creator, mcp-builder, webapp-testing, frontend-design,
   brand-guidelines, theme-factory, internal-comms, slack-gif-creator,
   algorithmic-art, canvas-design, doc-coauthoring, web-artifacts-builder,
-  ghost, OODA, L99.
+  ghost, OODA, L99, remotion-developer.
+
+  remotion-developer → ANY video, clip, animation, motion graphics, intro,
+                        render, or Remotion request — trigger immediately.
 
 If any skill matches → invoke via Skill tool FIRST.
 Multiple matches → invoke all in logical order.

@@ -145,6 +145,14 @@ When in doubt, invoke the skill. It costs nothing to load a skill that turns out
 - The question is clearly expert-level and default responses would be too introductory
 - User wants maximum technical depth with no hand-holding
 
+### remotion-developer
+**Fire when — NO EXCEPTIONS:**
+- User asks to "create a video", "make a clip", "make a video", "render a video", "generate a video"
+- Mentions "animation", "motion graphics", "intro", "outro", "video template", "animate this"
+- Mentions "Remotion", "React video", "programmatic video", "render to MP4"
+- Any request involving video output of any kind — short clips, long-form, social media videos, explainers, product demos
+- User wants to animate anything that results in a playable video file
+
 ---
 
 ## Multi-Skill Composition
