@@ -13,7 +13,7 @@ Open `index.html` in a browser, drop in any file (PDF, EPUB, DOCX, ODT, RTF, TXT
 Neural voices run entirely in your browser (no account, no API key, text never leaves your device).
 
 ## Our own voices + Storyteller style
-- **Hearth / Storyteller / Raconteur / Wit** are original voices created by blending Kokoro's built-in voice styles (free, offline, not a copy of any real person). Samples: `samples/`.
+- **Raconteur** (default narrator), **Hearth, Storyteller, Wit** are original voices created by blending Kokoro's built-in voice styles (free, offline, not a copy of any real person). Samples: `samples/`.
 - **Storyteller style** (default) shapes narration with timing measured from professional audiobook narration: ~0.12 s breaths, ~0.3 s between sentences, ~0.65–0.7 s at paragraphs and dialogue turns, tight staccato runs ("The rain fell. The kettle sulked."), 0.4 s after questions, 0.5 s after trailing-off lines, and an extra held beat before a short closing line (comic/dramatic timing). Short punchy lines are read slightly slower, long descriptive runs slightly faster. Switch to **Plain** anytime.
 
 ## Sounding natural, not robotic

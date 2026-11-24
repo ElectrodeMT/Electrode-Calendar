@@ -849,7 +849,7 @@ function trimSilence(pcm, sr) {
 
 // ---------- voices UI ----------
 let browserVoices = [], piperList = null, kokoroList = null;
-const OWN_VOICES = [{ id: 'af_hearth_v1', name: 'Hearth (our own): warm, natural American narrator (most natural)', own: true }, { id: 'bm_storyteller_v1', name: 'Storyteller (our own): warm, steady British narrator', own: true }, { id: 'bm_raconteur_v1', name: 'Raconteur (our own): deeper, richer British narrator', own: true }, { id: 'bm_wit_v1', name: 'Wit (our own): lighter, playful British narrator', own: true }];
+const OWN_VOICES = [{ id: 'bm_raconteur_v1', name: 'Raconteur (our own): deeper, richer British narrator', own: true }, { id: 'af_hearth_v1', name: 'Hearth (our own): warm, natural American narrator (most natural)', own: true }, { id: 'bm_storyteller_v1', name: 'Storyteller (our own): warm, steady British narrator', own: true }, { id: 'bm_wit_v1', name: 'Wit (our own): lighter, playful British narrator', own: true }];
 const KOKORO_FALLBACK = OWN_VOICES.concat(['af_heart','af_bella','af_nicole','af_aoede','af_kore','af_sarah','af_nova','af_sky','af_alloy','af_jessica','af_river','am_michael','am_fenrir','am_puck','am_echo','am_eric','am_liam','am_onyx','am_adam','am_santa','bf_emma','bf_isabella','bf_alice','bf_lily','bm_george','bm_fable','bm_lewis','bm_daniel'].map(id => ({ id })));
 function langPrefix() { return (navigator.language || 'en').slice(0, 2).toLowerCase(); }
 async function fillVoices() {
@@ -874,10 +874,10 @@ async function fillVoices() {
     showCredits();
   } else if (e === 'kokoro') {
     const grade = g => 'ABCDF'.indexOf((g || 'C')[0]);
-    const list = (kokoroList || KOKORO_FALLBACK).slice().sort((a, b) => (b.own ? 1 : 0) - (a.own ? 1 : 0) || grade(a.overallGrade) - grade(b.overallGrade));
+    const list = (kokoroList || KOKORO_FALLBACK).slice().sort((a, b) => (b.id === 'bm_raconteur_v1') - (a.id === 'bm_raconteur_v1') || (b.own ? 1 : 0) - (a.own ? 1 : 0) || grade(a.overallGrade) - grade(b.overallGrade));
     const accent = id => id[0] === 'b' ? 'British' : 'American', sex = id => id[1] === 'f' ? 'female' : 'male';
     list.forEach(v => sel.add(new Option(v.own ? '★ ' + v.name : `${v.name || v.id.split('_')[1].replace(/^./, c => c.toUpperCase())}: ${accent(v.id)} ${sex(v.id)}${v.overallGrade ? ' · grade ' + v.overallGrade : ''}${v.traits ? ' ' + v.traits : ''}`, v.id)));
-    sel.value = list.some(v => v.id === saved) ? saved : 'af_hearth_v1';
+    sel.value = list.some(v => v.id === saved) ? saved : 'bm_raconteur_v1'; // the user's chosen default narrator
   } else {
     sel.add(new Option('Loading voice list…', '')); sel.disabled = true;
     try { if (!piperList) piperList = (await NE.call({ type: 'voices' })).voices; }
