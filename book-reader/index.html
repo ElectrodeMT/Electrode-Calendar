@@ -56,6 +56,8 @@ dialog h3{margin:0 0 4px}
 dialog h4{margin:18px 0 6px;font-size:13px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted)}
 dialog .r{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin:6px 0}
 dialog p{margin:6px 0;font-size:14px;color:var(--muted)}
+#castList li{cursor:default;flex-wrap:wrap;border:1px solid var(--line);margin-bottom:6px}
+#castList select{max-width:180px}
 #exFiles li{cursor:default;flex-wrap:wrap;border:1px solid var(--line);margin-bottom:6px}
 #exFiles li .t{min-width:0}
 #exFiles .acts{display:flex;gap:6px;margin-left:auto}
@@ -106,6 +108,7 @@ dialog p{margin:6px 0;font-size:14px;color:var(--muted)}
     <label class="opt">Speed <input type="range" id="rate" min="0.5" max="3" step="0.1" value="1"><span id="rateV">1.0×</span></label>
     <label class="opt" id="pitchL">Pitch <input type="range" id="pitch" min="0.5" max="1.5" step="0.1" value="1"></label>
     <label class="opt">Text <input type="range" id="fs" min="14" max="32" step="1" value="20"></label>
+    <label class="opt" title="The narrator gives each character their own shade of voice, and follows whispers, shouts and other cues">Characters <select id="chars"><option value="on">Voiced</option><option value="off">Narrator only</option></select></label>
     <label class="opt" title="Storyteller: pauses, rhythm and comic timing modelled on professional audiobook narration">Style <select id="style"><option value="story">Storyteller</option><option value="plain">Plain</option></select></label>
     <label class="opt">Sleep <select id="sleep"><option value="0">Off</option><option value="5">5 min</option><option value="15">15 min</option><option value="30">30 min</option><option value="60">60 min</option><option value="ch">End of chapter</option></select></label>
   </div>
@@ -139,6 +142,9 @@ dialog p{margin:6px 0;font-size:14px;color:var(--muted)}
   <p id="elInfo">No key saved.</p>
   <p>Generated sentences are saved on this device, so replaying never spends credits twice. Free-plan audio is for personal use (see ElevenLabs' terms).</p>
   <div class="r"><button class="btn sm" id="elClearCache">Delete saved ElevenLabs audio</button></div>
+  <h4>Characters in this book</h4>
+  <p id="castHint">With Kokoro voices, the narrator gives each character a consistent shade of voice. Change any that were guessed wrong.</p>
+  <ul class="list" id="castList" style="padding:0"></ul>
   <h4>Speed & hardware</h4>
   <div class="r"><label class="opt"><input type="checkbox" id="gpu"> Use the GPU for Kokoro (much faster, but a 326 MB download instead of 92 MB)</label></div>
   <p id="diag"></p>
@@ -168,14 +174,27 @@ const BLENDS = {
 };
 const VOICE_BASE = 'https://huggingface.co/onnx-community/Kokoro-82M-v1.0-ONNX/resolve/main/voices/';
 const _fetch = self.fetch.bind(self);
+// Character voices: "<lang>x_mix__<voice>-<weight>__<voice>-<weight>" mixes any voice or blend (e.g. 60% narrator + 40% another style).
+const isMix = id => /^[ab]x_mix__/.test(id);
+const voiceCache = new Map();
+function voiceData(id) {
+  if (voiceCache.has(id)) return voiceCache.get(id);
+  const p = (async () => {
+    let mix = BLENDS[id] ? Object.entries(BLENDS[id].mix) : isMix(id) ? id.split('__').slice(1).map(t => { const i = t.lastIndexOf('-'); return [t.slice(0, i), +t.slice(i + 1) / 100]; }) : null;
+    if (!mix) return new Float32Array(await (await _fetch(VOICE_BASE + id + '.bin')).arrayBuffer());
+    const parts = await Promise.all(mix.map(async ([v, w]) => [await voiceData(v), w]));
+    const out = new Float32Array(parts[0][0].length); for (const [a, w] of parts) for (let i = 0; i < out.length; i++) out[i] += a[i] * w;
+    return out;
+  })();
+  voiceCache.set(id, p); p.catch(() => voiceCache.delete(id)); return p;
+}
 self.fetch = async (input, init) => {
   const u = String((input && input.url) || input), id = u.startsWith(VOICE_BASE) ? u.slice(VOICE_BASE.length).replace(/\.bin$/, '') : '';
-  if (!BLENDS[id]) return _fetch(input, init);
-  const parts = await Promise.all(Object.entries(BLENDS[id].mix).map(async ([v, w]) => [new Float32Array(await (await _fetch(VOICE_BASE + v + '.bin')).arrayBuffer()), w]));
-  const out = new Float32Array(parts[0][0].length); for (const [a, w] of parts) for (let i = 0; i < out.length; i++) out[i] += a[i] * w;
-  return new Response(out.buffer, { status: 200, headers: { 'Content-Type': 'application/octet-stream' } });
+  if (!BLENDS[id] && !isMix(id)) return _fetch(input, init);
+  const out = await voiceData(id);
+  return new Response(out.slice().buffer, { status: 200, headers: { 'Content-Type': 'application/octet-stream' } });
 };
-function allowBlends(k) { const orig = k._validate_voice.bind(k); k._validate_voice = v => BLENDS[v] ? v[0] : orig(v); return k; }
+function allowBlends(k) { const orig = k._validate_voice.bind(k); k._validate_voice = v => BLENDS[v] || isMix(v) ? v[0] : orig(v); return k; }
 let kokoro = null, kokoroP = null, kokoroDevice = '', piperMod = null, piperSess = null, piperVoice = '', piperP = null;
 const queue = []; let running = false, seq = 0;
 const post = (m, t) => self.postMessage(m, t || []);
@@ -509,6 +528,7 @@ async function loadBook(b, persist = true) {
   pend = b.chapters.map(c => { const s = new Set(); let k = 0; for (const p of c.paras) { k += p.length; s.add(k - 1); } return s; });
   chLen = flat.map(a => a.reduce((n, t) => n + t.length + 1, 0)); tailLen = []; for (let c = flat.length - 1, acc = 0; c >= 0; c--) { tailLen[c] = acc; acc += chLen[c]; }
   const pos = prefs.get('pos.' + b.id, null) || { ch: b.ch || 0, si: b.si || 0 }; b.ch = pos.ch; b.si = pos.si;
+  analyzeDialogue();
   ch = Math.min(b.ch || 0, flat.length - 1); si = Math.min(b.si || 0, flat[ch].length - 1);
   $('title').textContent = b.name; document.title = b.name + ' | Audiobook Reader';
   $('drop').classList.add('hide'); if (persist) await db.put(b); renderTOC(); renderChapter(); renderLib();
@@ -599,8 +619,7 @@ const NE = {
     this.ready[key] = p; p.catch(() => { delete this.ready[key]; hideDl(); });
     return p;
   },
-  gen(engine, voice, text, pri = 0, cache = true, owner = 'play', ctx = null) {
-    const speed = 1; // Kokoro's natural pace already sits within the range of popular audiobook narrators (~4.5–4.8 syllables/s)
+  gen(engine, voice, text, pri = 0, cache = true, owner = 'play', ctx = null, speed = 1) { // speed 1: Kokoro's natural pace sits within the range of popular audiobook narrators
     const k = engine + '|' + voice + '|' + speed + '|' + text;
     if (cache && this.cache.has(k)) return this.cache.get(k);
     const p = engine === 'eleven' ? EL.gen(voice, text, owner, ctx) : this.call({ type: 'gen', engine, voice, text, pri, owner, speed, gpu: useGPU() }).then(m => {
@@ -722,6 +741,133 @@ const silence = (sr, sec) => new Float32Array(Math.round(sr * sec));
 function ctxFor(c, s, j) { return { prev: s > 0 ? flat[c].slice(Math.max(0, s - 3), s).join(' ') : '', next: j + 1 < flat[c].length ? flat[c].slice(j + 1, j + 4).join(' ') : '' }; }
 const speakable = t => /[\p{L}\p{N}]/u.test(t);
 
+// ---------- Characters: who is speaking, and how the narrator voices them ----------
+const SPEECH_VERBS = 'said|says|asked|asks|replied|answered|whispered|shouted|yelled|cried|called|muttered|murmured|added|continued|snapped|laughed|sighed|exclaimed|demanded|insisted|began|repeated|growled|hissed|breathed|admitted|agreed|interrupted|protested|pleaded|warned|announced|declared|explained|suggested|wondered|roared|screamed|bellowed|grumbled|whimpered|sobbed|chuckled|giggled|teased|offered|mumbled|stammered|barked|retorted|called out|told';
+const FEMALE_WORDS = /\b(she|her|wife|mother|mum|mom|girl|woman|lady|mrs|miss|ms|madam|queen|princess|sister|aunt|daughter|grandmother|granny|grandma|duchess|nurse|witch|maid|widow)\b/i;
+const MALE_WORDS = /\b(he|his|him|husband|father|dad|boy|man|gentleman|mr|sir|king|prince|brother|uncle|son|grandfather|grandpa|duke|lord|wizard|monk|priest|captain|old man)\b/i;
+const FEMALE_NAMES = new Set('mary anna anne emma olivia sophia ava isabella mia charlotte amelia harper evelyn abigail emily elizabeth sofia ella madison scarlett victoria grace chloe camila penelope riley layla lillian nora zoey hannah lily eleanor hazel violet aurora lucy alice jane sarah rachel rebecca ruth esther margaret helen dorothy betty susan karen nancy lisa linda laura kate katherine catherine julia rose molly clara ellie hermione ginny luna arya sansa cersei daenerys bella jessica jennifer amy beth meg jo marilla diana eliza fanny marianne elinor harriet jean claire nina eva maya leah zoe ivy ruby sophie matilda wendy dorothea agnes edith martha'.split(' '));
+const MALE_NAMES = new Set('james john robert michael william david richard joseph thomas charles christopher daniel matthew anthony mark paul steven andrew kenneth joshua kevin brian george edward ronald timothy jason jeffrey ryan jacob gary nicholas eric jonathan stephen larry justin scott brandon benjamin samuel frank gregory raymond alexander patrick jack dennis jerry tyler aaron henry adam peter nathan arthur harry ron albus severus frodo sam bilbo gandalf aragorn tom huck oliver noah liam elijah lucas mason logan ethan leo max oscar hugo felix theo jon tyrion jaime ned bran rob sherlock watson holmes darcy bingley heathcliff pip rhett ahab ishmael atticus jem nick gatsby holden victor walter jesse hank luke han obi bob bill fred ted ben dan jim joe tim'.split(' '));
+const NOT_NAMES = new Set('the a an he she it they we i you his her their then and but so as when while after before at in on of with to for from this that there here what why how yes no oh well now just still again also only even then everyone someone nobody somebody chapter'.split(' '));
+const VOICE_ACTS = [ // narrator's range, triggered by the attribution verb
+  [/whisper|murmur|breath|mumbl|hush/i, { gain: -5, speed: 0.92 }],
+  [/shout|yell|roar|bellow|scream|cried|exclaim|snap|bark/i, { gain: 2.5, speed: 1.06 }],
+  [/growl|hiss|grumbl|retort/i, { gain: -1, speed: 0.95 }],
+  [/whimper|sob|plead|stammer/i, { gain: -3, speed: 0.9 }],
+  [/laugh|chuckl|gigg|teas/i, { gain: 0.5, speed: 1.04 }]
+];
+let dlg = []; // dlg[c][s] = [{ t, who, act }]   who: '' = narrator
+let cast = new Map(); // key -> { name, gender, lines, auto }
+function genderOf(phrase) { const w = phrase.toLowerCase().split(/\s+/); if (w.some(x => FEMALE_NAMES.has(x))) return 'f'; if (w.some(x => MALE_NAMES.has(x))) return 'm'; return FEMALE_WORDS.test(phrase) ? 'f' : MALE_WORDS.test(phrase) ? 'm' : ''; }
+function findSpeaker(narr) {
+  const V = SPEECH_VERBS;
+  const nm = '((?:(?:Mr|Mrs|Ms|Dr|Miss|Sir|Lady|Lord|Captain|Professor|Aunt|Uncle)\\.? )?(?:the |his |her |my |old |young |little )*[A-Z][\\p{L}\'’-]+(?: [A-Z][\\p{L}\'’-]+)?|he|she|his wife|her husband|the [a-z]+(?: [a-z]+)?)';
+  let m = narr.match(new RegExp(`\\b(?:${V})\\s+${nm}`, 'u')) || narr.match(new RegExp(`${nm}\\s+(?:${V})\\b`, 'u'));
+  if (!m) return null;
+  const who = m[1].trim(), verb = (narr.match(new RegExp(`\\b(${V})\\b`)) || [])[1] || '';
+  if (NOT_NAMES.has(who.toLowerCase()) && !/^(he|she)$/i.test(who)) return null;
+  return { who, verb };
+}
+function analyzeDialogue() {
+  dlg = []; cast = new Map(); const saved = book ? prefs.get('cast.' + book.id, {}) : {};
+  let lastF = null, lastM = null, prev = [], quoteRe = /“[^”]*”?|"[^"]*"?|‘(?=\S)[^’]*’(?=[\s,.;:!?—–-]|$)/g;
+  const note = (key, name, g) => { if (!cast.has(key)) cast.set(key, { name, gender: g, lines: 0 }); const r = cast.get(key); r.lines++; if (!r.gender && g) r.gender = g; return key; };
+  book.chapters.forEach((chp, c) => {
+    dlg[c] = [];
+    for (const para of chp.paras) {
+      const P = para.join(' '), spans = []; let m; quoteRe.lastIndex = 0;
+      while ((m = quoteRe.exec(P))) if (/[\p{L}\p{N}]/u.test(m[0])) spans.push([m.index, m.index + m[0].length]);
+      let who = '', act = null;
+      if (spans.length) {
+        let narr = ''; let k = 0; for (const [a, b] of spans) { narr += P.slice(k, a) + ' | '; k = b; } narr += P.slice(k);
+        const sp = findSpeaker(narr);
+        if (sp) {
+          let name = sp.who, g = genderOf(name);
+          if (/^(he|she)$/i.test(name)) { // a pronoun: prefer someone just mentioned in this paragraph, else the last speaker of that gender
+            g = /^he$/i.test(name) ? 'm' : 'f'; const before = narr.split(' | ')[0], cands = [];
+            for (const mm of before.matchAll(/\b(?:[Tt]he|[Aa]n?|[Hh]is|[Hh]er)\s+((?:[a-z]+\s+){0,2}?(?:wife|mother|mum|mom|girl|woman|lady|queen|princess|sister|aunt|daughter|grandmother|granny|duchess|nurse|witch|maid|widow|husband|father|dad|boy|man|gentleman|king|prince|brother|uncle|son|grandfather|duke|lord|wizard|monk|priest|captain|stranger|soldier|guard|doctor|teacher|farmer|sailor|driver|innkeeper))\b|\b((?:(?:Mr|Mrs|Ms|Dr|Miss|Sir|Lady|Lord)\.? )?[A-Z][\p{L}'’-]+(?: [A-Z][\p{L}'’-]+)?)/gu)) {
+              const np = mm[1] ? 'the ' + mm[1] : mm[2]; if (mm[2] && NOT_NAMES.has(mm[2].toLowerCase())) continue; if (genderOf(np) === g) cands.push(np);
+            }
+            name = cands.length ? cands[cands.length - 1] : (g === 'm' ? lastM : lastF) || name;
+          }
+          if (/^(he|she)$/i.test(name)) name = g === 'f' ? 'a woman' : 'a man';
+          const key = name.toLowerCase().replace(/^(the|his|her|my) /, '$1 ');
+          who = note(key, name.replace(/^./, x => x.toUpperCase()), g);
+          if (g === 'f') lastF = name; else if (g === 'm') lastM = name;
+          for (const [re, a] of VOICE_ACTS) if (re.test(sp.verb)) { act = a; break; }
+        } else if (prev.length >= 2 && prev[0] && prev[1] && prev[0] !== prev[1]) { who = prev[1]; cast.get(who).lines++; } // conversation turn-taking
+        else who = note('someone', 'Someone', '');
+      }
+      prev = [who || '', prev[0] || ''].filter((x, i) => i < 2);
+      if (!spans.length) prev = [];
+      // split each sentence of this paragraph into narrator / character parts
+      let off = 0;
+      for (const sen of para) {
+        const a0 = off, b0 = off + sen.length, parts = []; let cur = a0;
+        for (const [a, b] of spans) {
+          if (b <= a0 || a >= b0) continue;
+          const qa = Math.max(a, a0), qb = Math.min(b, b0);
+          if (qa > cur) parts.push({ t: P.slice(cur, qa), who: '' });
+          parts.push({ t: P.slice(qa, qb), who, act }); cur = qb;
+        }
+        if (cur < b0) parts.push({ t: P.slice(cur, b0), who: '' });
+        dlg[c].push(parts.map(x => ({ ...x, t: x.t.trim() })).filter(x => /[\p{L}\p{N}]/u.test(x.t)));
+        off = b0 + 1;
+      }
+    }
+  });
+  // stable voice assignment: by gender, in order of how much each character speaks
+  const used = new Set(), AGE = { m: { old: 'm2', young: 'm1' }, f: { old: 'f3', young: 'f2' }, n: { old: 'n1', young: 'n2' } };
+  [...cast.entries()].sort((a, b) => b[1].lines - a[1].lines).forEach(([k, r]) => {
+    const g = r.gender || 'n', age = /\b(old|elderly|aged|grand\w*|granny|ancient)\b/i.test(r.name) ? 'old' : /\b(young|little|boy|girl|kid|child|lad|lass)\b/i.test(r.name) ? 'young' : '';
+    let pick = age && !used.has(AGE[g][age]) ? AGE[g][age] : null;
+    for (let i = 0; !pick && i < 4; i++) if (!used.has(g + i)) pick = g + i;
+    pick ||= g + (used.size % 4); used.add(pick); r.auto = pick; r.voice = saved[k] || pick;
+  });
+}
+const charsOn = () => $('chars').value === 'on';
+const CHAR_STYLES = { // shades of the narrator: [other style, share of it, speed]
+  // measured against the narrator: deep -3.4 st, young +2.5 st, older = darker & slower, warm = darker tone; women ~+5 st
+  m0: ['am_onyx', 0.5, 0.96, 'Deep, gruff man'], m1: ['am_eric', 0.5, 1.04, 'Young man'], m2: ['bm_lewis', 0.4, 0.94, 'Older man'], m3: ['am_adam', 0.5, 1.0, 'Warm man'], m4: ['am_santa', 0.5, 0.97, 'Jolly old man'],
+  f0: ['bf_emma', 0.5, 1.02, 'Woman'], f1: ['bf_isabella', 0.5, 1.0, 'Elegant woman'], f2: ['af_bella', 0.5, 1.03, 'Bright young woman'], f3: ['bf_alice', 0.5, 0.98, 'Soft, gentle woman'],
+  n0: ['am_michael', 0.3, 1.0, 'Neutral'], n1: ['bm_lewis', 0.3, 0.97, 'Neutral, older'], n2: ['am_puck', 0.3, 1.03, 'Neutral, lighter'], n3: ['bf_emma', 0.3, 1.0, 'Neutral, softer'],
+  narrator: [null, 0, 1, 'Narrator (no change)']
+};
+function partVoice(part, e, v) { // -> { voice, speed, gain }
+  const a = part.act || {}, base = { voice: v, speed: a.speed || 1, gain: a.gain || 0 };
+  if (!part.who || !charsOn()) return part.who && charsOn() === false ? { voice: v, speed: 1, gain: 0 } : base;
+  const r = cast.get(part.who), st = CHAR_STYLES[(r && r.voice) || 'n0'] || CHAR_STYLES.n0;
+  if (e !== 'kokoro' || !st[0]) return base;
+  const own = 1 - st[1], id = `${v[0]}x_mix__${v}-${Math.round(own * 100)}__${st[0]}-${Math.round(st[1] * 100)}`;
+  return { voice: id, speed: +(st[2] * (a.speed || 1)).toFixed(3), gain: a.gain || 0 };
+}
+const sentParts = (c, s) => (charsOn() && dlg[c] && dlg[c][s] && dlg[c][s].length ? dlg[c][s] : [{ t: flat[c][s], who: '' }]); // 'Narrator only' reads sentences whole
+const singleVoiceKey = (c, s, e, v) => { const ps = sentParts(c, s); if (ps.length !== 1) return null; const pv = partVoice(ps[0], e, v); return pv.voice + '|' + pv.speed + '|' + pv.gain; };
+// Generate one phrase group. Mixed narrator/character sentences are voiced part by part and joined with a short natural gap.
+async function genChunk(e, v, c, s, j, pri, cache, owner) {
+  const ps = sentParts(c, s);
+  if (s === j && ps.length > 1) {
+    const outs = await Promise.all(ps.map(pt => { const pv = partVoice(pt, e, v); return NE.gen(e, pv.voice, speechText(pt.t), pri, cache, owner, null, pv.speed).then(r => ({ r, pv })); }));
+    const sr = outs[0].r.sr, parts = [];
+    outs.forEach(({ r, pv }, i) => { const g = 10 ** (pv.gain / 20), x = fade(trimSilence(r.pcm, sr), sr); for (let k = 0; k < x.length; k++) x[k] *= g; parts.push(x); if (i < outs.length - 1) parts.push(silence(sr, 0.14)); });
+    return { pcm: concat(parts), sr, gain: 0 };
+  }
+  const pv = partVoice(ps[0], e, v), r = await NE.gen(e, pv.voice, chunkText(c, s, j), pri, cache, owner, ctxFor(c, s, j), pv.speed);
+  return { pcm: r.pcm, sr: r.sr, gain: pv.gain };
+}
+function renderCast() {
+  const ul = $('castList'); ul.innerHTML = '';
+  const list = [...cast.entries()].filter(([, r]) => r.lines).sort((a, b) => b[1].lines - a[1].lines);
+  $('castHint').textContent = !book ? 'Open a book to see its characters.' : !list.length ? 'No dialogue found in this book.' : engineName() === 'kokoro' ? 'The narrator gives each character a consistent shade of voice. Change any that were guessed wrong.' : 'Character voices need a Kokoro voice. With other voices, whispers and shouts still change the delivery.';
+  for (const [k, r] of list.slice(0, 40)) {
+    const li = document.createElement('li'), t = document.createElement('span'), sel = document.createElement('select');
+    t.className = 't'; t.textContent = `${r.name} · ${r.lines} line${r.lines === 1 ? '' : 's'}`; sel.setAttribute('aria-label', 'Voice for ' + r.name);
+    for (const [id, st] of Object.entries(CHAR_STYLES)) sel.add(new Option(st[3] + (id === r.auto ? ' (auto)' : ''), id));
+    sel.value = r.voice;
+    sel.onchange = () => { r.voice = sel.value; const all = prefs.get('cast.' + book.id, {}); all[k] = sel.value; prefs.set('cast.' + book.id, all); if (playing) jump(ch, si, true); };
+    li.append(t, sel); ul.appendChild(li);
+  }
+}
+
 // ---------- "Storyteller" narration style ----------
 // Measured from a 40 s professional narration sample: three pause tiers (~0.12 s breath, ~0.3 s sentence,
 // ~0.65 s paragraph / dialogue turn), quick delivery inside phrases (~195 wpm) balanced by deliberate pauses
@@ -759,8 +905,9 @@ function styleRate(t) {   // gentle pace shaping inside the user's chosen speed
 // 1) Generate phrase groups (up to a paragraph) so intonation flows across sentences instead of resetting.
 const CHUNK_MAX = { kokoro: 300, piper: 400, eleven: 500, test: 300 };
 function chunkEnd(c, s, e) {
-  const max = CHUNK_MAX[e] || 300; let j = s, len = flat[c][s].length;
-  while (!pend[c].has(j) && j + 1 < flat[c].length && len + flat[c][j + 1].length + 1 <= max) { j++; len += flat[c][j].length + 1; }
+  const max = CHUNK_MAX[e] || 300, v = $('voice').value, key = singleVoiceKey(c, s, e, v); let j = s, len = flat[c][s].length;
+  if (key === null) return s; // a sentence mixing narration and dialogue is voiced on its own
+  while (!pend[c].has(j) && j + 1 < flat[c].length && len + flat[c][j + 1].length + 1 <= max && singleVoiceKey(c, j + 1, e, v) === key) { j++; len += flat[c][j].length + 1; }
   return j;
 }
 const ROMAN = { I: 1, V: 5, X: 10, L: 50, C: 100 };
@@ -832,6 +979,9 @@ function roomTone(x, seed) {
 // Turn one generated phrase group into finished narration + the start time of each sentence (for highlighting).
 const cutStats = { ok: 0, fail: 0 };
 function assemble(res, c, s, j, story, gapAfter) {
+  const out0 = assemble0(res, c, s, j, story, gapAfter); if (res.gain) { const g = 10 ** (res.gain / 20); for (let i = 0; i < out0.pcm.length; i++) out0.pcm[i] *= g; } return out0;
+}
+function assemble0(res, c, s, j, story, gapAfter) {
   const sr = res.sr, pcm = res.pcm, idx = []; for (let k = s; k <= j; k++) idx.push(k);
   const spk = idx.filter(k => speakable(flat[c][k])), cuts = findCuts(pcm, sr, spk.map(k => letters(flat[c][k])) );
   if (spk.length > 1) cutStats[cuts ? 'ok' : 'fail']++;
@@ -928,7 +1078,7 @@ function prefetch(c, j) { // generate the next phrase groups while this one play
   for (let k = 0, ahead = e === 'eleven' ? 1 : 5; k < ahead && pos; k++) { // ElevenLabs: small lookahead so skipping wastes few credits
     while (pos && !speakable(flat[pos[0]][pos[1]])) pos = nextPos(...pos); if (!pos) break;
     const [pc, ps] = pos, pj = chunkEnd(pc, ps, e), t = chunkText(pc, ps, pj);
-    NE.gen(e, v, t, 1, true, 'play', ctxFor(pc, ps, pj)).catch(() => {}); secs += t.length / 15;
+    genChunk(e, v, pc, ps, pj, 1, true, 'play').catch(() => {}); secs += t.length / 15;
     if (secs > 45) break; pos = nextPos(pc, pj);
   }
 }
@@ -944,13 +1094,19 @@ async function speakCurrent() {
   const text = flat[ch][si];
   if (!speakable(text)) { si++; return speakCurrent(); }
   if (isNeural()) return speakNeural(my);
-  const u = new SpeechSynthesisUtterance(text);
-  const v = browserVoices.find(v => v.voiceURI === $('voice').value); if (v) { u.voice = v; u.lang = v.lang; }
-  u.rate = Math.min(+$('rate').value * styleRate(text), 2.5); u.pitch = +$('pitch').value;
+  const v = browserVoices.find(v => v.voiceURI === $('voice').value), parts = sentParts(ch, si);
   const pauseMs = storyMode() ? Math.max(0, styleGap(ch, si) - 0.15) * 1000 : 0; // device voices add ~0.15 s themselves
-  u.onend = () => { if (my !== token || !playing) return; si++; pauseMs ? setTimeout(() => { if (my === token && playing) speakCurrent(); }, pauseMs) : speakCurrent(); };
-  u.onerror = e => { if (my !== token || !playing || e.error === 'interrupted' || e.error === 'canceled') return; si++; speakCurrent(); };
-  synth.speak(u);
+  const DEV = { m0: [0.82, 0.96], m1: [1.12, 1.04], m2: [0.88, 0.94], m3: [0.94, 1], m4: [1.15, 0.97], f0: [1.3, 1.02], f1: [1.22, 1], f2: [1.4, 1.04], f3: [1.25, 0.97], n0: [1.05, 1], n1: [0.95, 0.97], n2: [1.12, 1.03], n3: [1.15, 1] };
+  parts.forEach((pt, i) => {
+    const u = new SpeechSynthesisUtterance(speechText(pt.t)); if (v) { u.voice = v; u.lang = v.lang; }
+    const r = pt.who && charsOn() ? cast.get(pt.who) : null, d = (r && DEV[r.voice]) || [1, 1], a = pt.act || {};
+    u.rate = Math.min(+$('rate').value * styleRate(text) * d[1] * (a.speed || 1), 2.5); u.pitch = Math.max(0.1, Math.min(2, +$('pitch').value * d[0])); u.volume = Math.min(1, 10 ** ((a.gain || 0) / 20));
+    if (i === parts.length - 1) {
+      u.onend = () => { if (my !== token || !playing) return; si++; pauseMs ? setTimeout(() => { if (my === token && playing) speakCurrent(); }, pauseMs) : speakCurrent(); };
+      u.onerror = e => { if (my !== token || !playing || e.error === 'interrupted' || e.error === 'canceled') return; si++; speakCurrent(); };
+    }
+    synth.speak(u);
+  });
 }
 async function speakNeural(my) {
   const e = engineName(), v = $('voice').value, c = ch, s0 = si, j = chunkEnd(c, s0, e), text = chunkText(c, s0, j);
@@ -959,7 +1115,7 @@ async function speakNeural(my) {
     if (!NE.ready[readyKey(e, v)]) { status(`Loading ${ENGINE_NAMES[e] || e} voice…`); await NE.load(e, v); }
     if (my !== token) return;
     prefetch(c, j);
-    res = await Promise.race([NE.gen(e, v, text, 0, true, 'play', ctxFor(c, s0, j)), new Promise((_, rej) => setTimeout(() => rej(new Error('Voice generation timed out')), 120000))]);
+    res = await Promise.race([genChunk(e, v, c, s0, j, 0, true, 'play'), new Promise((_, rej) => setTimeout(() => rej(new Error('Voice generation timed out')), 120000))]);
   } catch (err) {
     clearTimeout(waitT); if (my !== token || err.dropped) return;
     console.warn('Voice generation failed:', err.message); failures++;
@@ -1092,7 +1248,7 @@ async function exportAudio() {
       for (let s1 = 0; s1 < flat[c].length;) { const j1 = chunkEnd(c, s1, e); items.push({ s: s1, j: j1, t: chunkText(c, s1, j1), count: j1 - s1 + 1 }); s1 = j1 + 1; }
       // pipeline: keep a few phrase groups generating ahead of the encoder
       const reqs = []; let next = 0;
-      const fill = () => { while (next < items.length && reqs.length < 4) { const it = items[next++]; reqs.push({ it, p: speakable(it.t) ? NE.gen(e, v, it.t, 0, false, 'export', it.title ? null : ctxFor(c, it.s, it.j)) : Promise.resolve(null) }); } };
+      const fill = () => { while (next < items.length && reqs.length < 4) { const it = items[next++]; reqs.push({ it, p: !speakable(it.t) ? Promise.resolve(null) : it.title ? NE.gen(e, v, it.t, 0, false, 'export') : genChunk(e, v, c, it.s, it.j, 0, false, 'export') }); } };
       fill();
       while (reqs.length) {
         if (job.cancel) throw new Error('cancelled');
@@ -1166,7 +1322,7 @@ async function refreshDiag() {
     $('storage').textContent = `This site is using ${(est.usage / 1e6).toFixed(0)} MB of storage. Downloaded: ${prefs.get('dl', []).map(k => k.replace('piper|', 'Piper ')).join(', ') || 'none yet'}.`;
   } catch { $('storage').textContent = 'Storage info unavailable.'; }
 }
-function openAudio() { refreshDiag(); renderExports(); if (!$('audioDlg').open) $('audioDlg').showModal(); }
+function openAudio() { refreshDiag(); renderExports(); renderCast(); if (!$('audioDlg').open) $('audioDlg').showModal(); }
 $('audioBtn').onclick = openAudio;
 function elKeyState() { $('elKey').placeholder = EL.key() ? 'Key saved (paste a new one to replace)' : 'ElevenLabs API key'; if (!EL.key()) $('elInfo').textContent = 'No key saved.'; }
 $('elSave').onclick = async () => {
@@ -1228,6 +1384,7 @@ $('rate').oninput = e => { $('rateV').textContent = (+e.target.value).toFixed(1)
 $('rate').onchange = () => { if (playing && !isNeural()) jump(ch, si); };
 $('pitch').onchange = e => { prefs.set('pitch', e.target.value); if (playing && !isNeural()) jump(ch, si); };
 $('fs').oninput = e => { document.documentElement.style.setProperty('--fs', e.target.value + 'px'); prefs.set('fs', e.target.value); };
+$('chars').onchange = () => { prefs.set('chars', $('chars').value); if (playing) jump(ch, si, true); status($('chars').value === 'on' ? 'Character voices on.' : 'Narrator voice only.'); };
 $('style').onchange = () => { prefs.set('style', $('style').value); status($('style').value === 'story' ? 'Storyteller style: natural pauses, rhythm and timing.' : 'Plain style.'); };
 $('sleep').onchange = e => { const v = e.target.value; sleepEndCh = v === 'ch'; sleepAt = (v !== 'ch' && +v) ? Date.now() + v * 60000 : 0; status(v === '0' ? 'Sleep timer off.' : 'Sleep timer set.'); };
 $('themeBtn').onclick = () => { const r = document.documentElement, dark = getComputedStyle(r).getPropertyValue('--bg').trim() === '#121314'; r.dataset.theme = dark ? 'light' : 'dark'; prefs.set('theme', r.dataset.theme); };
@@ -1257,6 +1414,7 @@ const th = prefs.get('theme', null); if (th) document.documentElement.dataset.th
 const mobile = navigator.userAgentData ? navigator.userAgentData.mobile : /Mobi|Android|iPhone|iPad/i.test(navigator.userAgent);
 $('gpu').checked = prefs.get('gpu', false);
 $('style').value = prefs.get('style', 'story');
+$('chars').value = prefs.get('chars', 'on');
 { const m = prefs.get('elModel', null); if (m) { if (![...$('elModel').options].some(o => o.value === m)) $('elModel').add(new Option(m, m)); $('elModel').value = m; } }
 elKeyState();
 if (prefs.get('gpu', null) === null && navigator.gpu && !mobile) { // default on only for a real (non-software) GPU
@@ -1271,7 +1429,7 @@ try { navigator.storage && navigator.storage.persist && navigator.storage.persis
 if (window.innerWidth <= 760) $('side').classList.add('hide');
 renderLib();
 // test hook (harmless): exposes internals for automated checks
-window.__abr = { NE, cutStats, styleGap, styleRate, speechText, chunkEnd: (c, s) => chunkEnd(c, s, engineName()), get state() { return { ch, si, playing, engine: engineName() }; } };
+window.__abr = { NE, cutStats, get cast() { return Object.fromEntries([...cast].map(([k, r]) => [k, { ...r }])); }, parts: (c, s) => sentParts(c, s), partVoice: (c, s, i) => partVoice(sentParts(c, s)[i], engineName(), $('voice').value), styleGap, styleRate, speechText, chunkEnd: (c, s) => chunkEnd(c, s, engineName()), get state() { return { ch, si, playing, engine: engineName() }; } };
 })();
 </script>
 </body>

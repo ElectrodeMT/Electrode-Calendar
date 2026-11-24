@@ -26,7 +26,7 @@ open('doc.srt','w').write('1\n00:00:01,000 --> 00:00:02,000\nHello subtitle.\n\n
 open('cjk.txt','w').write('这是第一句。这是第二句！\n\nمرحبا بالعالم. هذه جملة ثانية.\n')
 open('xss <img src=x onerror=alert(1)>.txt','w').write('<script>alert(2)</script> Hello <b>world</b>. <img src=x onerror="alert(3)">\n')
 open('empty.txt','w').write('')
-open('bin.dat','wb').write(bytes(random.Random(1).randrange(256) for _ in range(5000)))
+_rb=random.Random(1); open('bin.dat','wb').write(bytes(_rb.randrange(256) for _ in range(5000)))
 open('bad.epub','wb').write(b'PK\x03\x04garbage'*50)
 open('bad.pdf','wb').write(b'%PDF-1.4 garbage garbage')
 open('bad.docx','wb').write(b'not a zip at all')
@@ -39,4 +39,5 @@ with open('big.txt','w') as f:
 with open('bightml.html','w') as f:
     f.write('<html><body><h1>Huge</h1>'+''.join(f'<div><p>{sent()} {sent()}</p></div>' for _ in range(15000))+'</body></html>')
 open('book.txt','w').write('Chapter 1\n\nAlpha one. Alpha two.\n\nAlpha three.\n\nChapter 2\n\nBeta one. Beta two.\n\nChapter 3\n\nGamma one.\n')
+open('dialogue.txt','w').write('Chapter One. The Unfortunate Teapot.\n\nIt was, by all accounts, a perfectly ordinary Tuesday. The rain fell. The kettle sulked. And Arthur Pennywhistle, aged sixty-three, decided that today, of all days, he would finally become an adventurer.\n\n"Where are you going?" asked his wife, not looking up from her crossword.\n\n"Out," said Arthur. "To seek my fortune."\n\n"Take an umbrella."\n\nHe considered this. Adventurers, he was fairly certain, did not carry umbrellas. They carried swords, maps, and a certain air of mystery. Arthur owned none of these things... but he did have a very nice umbrella.\n\nSo he took it.\n\n"Arthur," whispered Mrs. Pennywhistle, "do be careful."\n\n"I always am," he said.\n\n"You never are."\n\n"Well, I shall start today!"\n\nThe old captain looked up from his ale. "Another fool with an umbrella," he growled.\n')
 print({f: os.path.getsize(f) for f in os.listdir('.') if not f.endswith('.py')})

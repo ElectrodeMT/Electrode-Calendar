@@ -28,6 +28,15 @@ Neural voices run entirely in your browser (no account, no API key, text never l
 ## Tuned against popular narrators
 Raconteur v2 was tuned by measuring the public preview clips of the 26 most-used storytelling voices on ElevenLabs (pace, pause lengths, pitch range and movement, sentence-final pitch fall, emphasis) and choosing the voice blend and mastering closest to their median. Changes: lighter compression and a natural loudness arc per sentence (more emphasis), and a re-balanced blend whose sentences now fall at the end instead of sounding unfinished. Compare `samples/raconteur-before.mp3` and `samples/raconteur.mp3`.
 
+## Character voices
+The narrator voices dialogue the way a human narrator does: one performer, a different shade per character.
+- **Who's speaking** is worked out from attributions ("said Arthur", "asked his wife", "Mrs. Pennywhistle whispered"), pronouns (resolved to the person just mentioned), and conversational turn-taking.
+- **Each character gets a consistent shade** of the narrator's own voice (a blend that is still 50–60% narrator): deep/gruff, young, older, warm, jolly old man, and four female shades about 5 semitones higher. Age words ("old captain", "young girl") pick the fitting shade.
+- **Range from the text:** whispered → softer and slower; shouted/cried → stronger and quicker; growled → darker; sobbed/pleaded → softer and slower.
+- **Cast list** (⤓ Audio): see every detected character and change the voice of any the app guessed wrong; saved per book.
+- Works fully with Kokoro voices; device voices get pitch/pace shades; ElevenLabs and Piper keep the narrator's voice but follow whispers and shouts.
+- Switch to **Narrator only** in the player to turn it off. Sample: `samples/characters.mp3`.
+
 ## ElevenLabs notes
 - The key is stored only in this browser (localStorage) and sent only to api.elevenlabs.io. Use a restricted key with a credit limit.
 - Every generated sentence is saved on the device, so replays and exports of already-heard text cost no credits.
@@ -45,7 +54,7 @@ Serve the folder over http(s) (e.g. GitHub Pages, or `python3 -m http.server` in
 - avoids re-downloading every visit (opening the file directly from disk works, but cannot cache voices).
 
 ## Tests
-26 automated tests (UI, formats, playback, export, stress, chaos) using Playwright + Chromium:
+28 automated tests (UI, formats, playback, export, stress, chaos) using Playwright + Chromium:
 ```
 cd book-reader && python3 -m http.server 8766 &   # serve the app
 cd tests && python3 gen.py && node suite.cjs      # generate fixtures, run suite
