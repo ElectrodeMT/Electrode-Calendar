@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Audiobook Reader</title>
 <style>
-:root{--bg:#f6f4ef;--panel:#fff;--ink:#1d1d1f;--muted:#6b6b70;--line:#e3e0d8;--accent:#2f6f5e;--accent-ink:#fff;--hl:#ffe9a8;--read:#9a9aa0;--warn:#fff4d6;--warn-ink:#6b4e00}
+:root{--bg:#f6f4ef;--panel:#fff;--ink:#1d1d1f;--muted:#6b6b70;--line:#e3e0d8;--accent:#2f6f5e;--accent-ink:#fff;--hl:#ffe9a8;--read:#85858b;--warn:#fff4d6;--warn-ink:#6b4e00}
 @media (prefers-color-scheme:dark){:root:not([data-theme=light]){--bg:#121314;--panel:#1b1c1e;--ink:#ececee;--muted:#9a9aa2;--line:#2c2d31;--accent:#5fb39a;--accent-ink:#0d1512;--hl:#4a3f12;--read:#6a6a70;--warn:#3a3014;--warn-ink:#f3d98a}}
 :root[data-theme=dark]{--bg:#121314;--panel:#1b1c1e;--ink:#ececee;--muted:#9a9aa2;--line:#2c2d31;--accent:#5fb39a;--accent-ink:#0d1512;--hl:#4a3f12;--read:#6a6a70;--warn:#3a3014;--warn-ink:#f3d98a}
 *{box-sizing:border-box}
@@ -19,7 +19,7 @@ header h1{font-size:18px;margin:0;flex:1;white-space:nowrap;overflow:hidden;text
 .btn:disabled{opacity:.45;cursor:default}
 .btn.sm{padding:4px 8px;font-size:13px;border-radius:8px}
 main{display:grid;grid-template-columns:280px 1fr;min-height:calc(100vh - 57px)}
-aside{border-right:1px solid var(--line);background:var(--panel);overflow:auto;max-height:calc(100vh - 57px - 170px);position:sticky;top:57px}
+aside{border-right:1px solid var(--line);background:var(--panel);overflow:auto;max-height:calc(100vh - 57px - var(--ph,170px));position:sticky;top:57px}
 aside h2{font-size:12px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin:16px 16px 6px}
 .list{list-style:none;margin:0;padding:0 8px 12px}
 .list li{padding:7px 10px;border-radius:8px;cursor:pointer;font-size:14px;display:flex;gap:8px;align-items:center}
@@ -27,7 +27,7 @@ aside h2{font-size:12px;text-transform:uppercase;letter-spacing:.06em;color:var(
 .list li.active{background:var(--accent);color:var(--accent-ink)}
 .list li .x{margin-left:auto;opacity:.5;border:0;background:none;cursor:pointer}
 .list li span.t{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-#reader{padding:24px 16px 240px;max-width:760px;margin:0 auto;width:100%}
+#reader{padding:24px 16px calc(var(--ph,240px) + 24px);max-width:760px;margin:0 auto;width:100%}
 #reader h2{font-family:Georgia,serif;font-weight:600;margin-top:0}
 #text{font-family:Georgia,'Times New Roman',serif;font-size:var(--fs,20px);line-height:1.7}
 #text p{margin:0 0 1em}
@@ -198,7 +198,8 @@ function pump() {
     const t0 = performance.now();
     try {
       let r;
-      if (j.engine === 'kokoro') { const k = await getKokoro(j.gpu); const a = await k.generate(j.text, { voice: j.voice, speed: 1 }); r = { pcm: a.audio, sr: a.sampling_rate }; }
+      if (j.engine === 'test') { await new Promise(r => setTimeout(r, j.voice === 'slow' ? 300 : 10)); if (j.voice === 'fail') throw new Error('test failure'); r = { pcm: new Float32Array(j.voice === 'long' ? 48000 : 3600), sr: 24000 }; } // silent engine for automated tests
+      else if (j.engine === 'kokoro') { const k = await getKokoro(j.gpu); const a = await k.generate(j.text, { voice: j.voice, speed: 1 }); r = { pcm: a.audio, sr: a.sampling_rate }; }
       else { const s = await getPiper(j.voice); r = wavToPcm(await (await s.predict(j.text)).arrayBuffer()); }
       const pcm = new Float32Array(r.pcm);
       post({ type: 'audio', id: j.id, pcm, sr: r.sr, ms: performance.now() - t0 }, [pcm.buffer]);
@@ -209,9 +210,10 @@ function pump() {
 self.onmessage = async ({ data: m }) => {
   try {
     if (m.type === 'gen') { queue.push({ ...m, seq: ++seq }); pump(); }
-    else if (m.type === 'clear') { for (const j of queue.splice(0)) post({ type: 'dropped', id: j.id }); post({ type: 'ok', id: m.id }); }
+    else if (m.type === 'clear') { for (let i = queue.length - 1; i >= 0; i--) if (!m.owner || queue[i].owner === m.owner) post({ type: 'dropped', id: queue.splice(i, 1)[0].id }); post({ type: 'ok', id: m.id }); }
     else if (m.type === 'load') {
-      if (m.engine === 'kokoro') {
+      if (m.engine === 'test') post({ type: 'ok', id: m.id, device: 'test' });
+      else if (m.engine === 'kokoro') {
         const k = await getKokoro(m.gpu);
         post({ type: 'ok', id: m.id, device: kokoroDevice, voices: Object.entries(k.voices).map(([id, v]) => ({ id, ...v })) });
       } else { await getPiper(m.voice); post({ type: 'ok', id: m.id, device: 'wasm' }); }
@@ -332,13 +334,14 @@ function splitPlain(text, name) {
   if (buf.trim()) out.push(chapter(out.length ? `Part ${n}` : name, buf));
   return out.filter(Boolean);
 }
+function qsa(root, base, extra) { try { return root.querySelectorAll(base + extra); } catch { return root.querySelectorAll(base); } } // :has() missing in older browsers
 function splitHtmlDoc(doc, fallback) {
   doc.querySelectorAll('script,style,noscript,nav,svg,head,template').forEach(e => e.remove());
   const body = doc.body || doc.documentElement;
-  const blocks = body.querySelectorAll('h1,h2,h3,p,li,blockquote,pre,td,th,dd,dt,figcaption,div:not(:has(p,div,h1,h2,h3,li,blockquote,pre,table))');
+  const blocks = qsa(body, 'h1,h2,h3,p,li,blockquote,pre,td,th,dd,dt,figcaption', ',div:not(:has(p,div,h1,h2,h3,li,blockquote,pre,table))');
   const out = []; let cur = { title: fallback, text: '' }; const seen = new Set();
   for (const el of blocks) {
-    if ([...seen].some(s => s.contains(el))) continue; seen.add(el);
+    let a = el.parentElement, inside = false; while (a) { if (seen.has(a)) { inside = true; break; } a = a.parentElement; } if (inside) continue; seen.add(el);
     const t = el.textContent.replace(/\s+/g, ' ').trim(); if (!t) continue;
     if (/^H[12]$/.test(el.tagName) && cur.text.trim().length > 0) { out.push(chapter(cur.title, cur.text)); cur = { title: t, text: '' }; }
     else if (/^H[12]$/.test(el.tagName)) cur.title = t;
@@ -400,9 +403,9 @@ async function readEPUB(buf) {
     const f = zip.file(decodeURIComponent(base + href.split('#')[0])); if (!f) continue;
     status(`Reading EPUB section ${k + 1}/${refs.length}…`);
     const doc = new DOMParser().parseFromString(await f.async('string'), 'text/html');
-    const h = doc.querySelector('h1,h2,h3,title')?.textContent?.replace(/\s+/g, ' ').trim();
+    const h = (doc.body && doc.body.querySelector('h1,h2,h3') || doc.querySelector('title'))?.textContent?.replace(/\s+/g, ' ').trim();
     doc.querySelectorAll('script,style').forEach(e => e.remove());
-    const parts = [...doc.body.querySelectorAll('p,h1,h2,h3,h4,li,blockquote,pre,div:not(:has(p,div))')]
+    const parts = [...qsa(doc.body, 'p,h1,h2,h3,h4,li,blockquote,pre', ',div:not(:has(p,div))')]
       .map(e => e.textContent.replace(/\s+/g, ' ').trim()).filter(Boolean);
     const c = chapter(h || `Section ${out.length + 1}`, (parts.length ? [...new Set(parts)] : [doc.body.textContent]).join('\n\n')); if (c) out.push(c);
   }
@@ -433,6 +436,8 @@ async function parseFile(file) {
   if (ext === 'odt') return { chapters: await readODT(await file.arrayBuffer(), name) };
   if (type.startsWith('image/') || /^(png|jpe?g|webp|bmp|gif|tiff?)$/.test(ext)) return { chapters: await readImage(file, name) };
   const text = await file.text();
+  const sample = text.slice(0, 20000), junk = (sample.match(/[\u0000-\u0008\u000E-\u001F\uFFFD]/g) || []).length;
+  if (sample.length && junk > sample.length * 0.05) throw new Error('This looks like a binary file with no readable text.');
   if (/^(html?|xhtml)$/.test(ext) || /^\s*<(!doctype|html)/i.test(text)) return { chapters: parseHTML(text, name) };
   if (ext === 'xml') return { chapters: splitPlain(new DOMParser().parseFromString(text, 'application/xml').documentElement.textContent, name) };
   if (/^(md|markdown)$/.test(ext)) return { chapters: splitPlain(mdToText(text).replace(/^#{1,3} /gm, '# '), name) };
@@ -449,17 +454,28 @@ async function openFile(file) {
     const r = await parseFile(file);
     if (!r.chapters || !r.chapters.length) throw new Error('No readable text found in this file.');
     const id = `${file.name}|${file.size}|${file.lastModified || 0}`;
-    const prev = await db.get(id);
+    const prev = prefs.get('pos.' + id, null) || await db.get(id);
     await loadBook({ id, name: r.title || file.name.replace(/\.[^.]+$/, ''), chapters: r.chapters, ch: prev?.ch || 0, si: prev?.si || 0, updated: Date.now() });
     status(prev ? 'Resumed where you left off.' : `Loaded ${r.chapters.length} section(s). Press Play.`);
-  } catch (e) { console.error(e); status('Error: ' + e.message); }
+  } catch (e) { console.warn(e); status('Error: ' + friendly(e, file.name)); }
 }
-async function loadBook(b) {
+function friendly(e, name) {
+  const m = String((e && (e.message || e.name)) || e), ext = (name.split('.').pop() || '').toUpperCase();
+  if (/password/i.test(m) || (e && e.name === 'PasswordException')) return 'This PDF is password-protected. Remove the password and try again.';
+  if (/central directory|zip|Corrupted/i.test(m)) return `This ${ext} file is damaged or isn't a real ${ext} file.`;
+  if (/InvalidPDF|Invalid PDF|PDF structure/i.test(m) || (e && e.name === 'InvalidPDFException')) return 'This PDF is damaged or unreadable.';
+  if (/Could not load a component|Failed to fetch|NetworkError/i.test(m)) return 'A reader component could not be downloaded. Check your internet connection and try again.';
+  if (/Cannot read|undefined|null|is not a function/i.test(m)) return `Couldn't read this ${ext} file. It may be damaged or in an unsupported variant.`;
+  return m;
+}
+async function loadBook(b, persist = true) {
   book = b; flat = b.chapters.map(c => c.paras.flat());
   pend = b.chapters.map(c => { const s = new Set(); let k = 0; for (const p of c.paras) { k += p.length; s.add(k - 1); } return s; });
+  chLen = flat.map(a => a.reduce((n, t) => n + t.length + 1, 0)); tailLen = []; for (let c = flat.length - 1, acc = 0; c >= 0; c--) { tailLen[c] = acc; acc += chLen[c]; }
+  const pos = prefs.get('pos.' + b.id, null) || { ch: b.ch || 0, si: b.si || 0 }; b.ch = pos.ch; b.si = pos.si;
   ch = Math.min(b.ch || 0, flat.length - 1); si = Math.min(b.si || 0, flat[ch].length - 1);
   $('title').textContent = b.name; document.title = b.name + ' | Audiobook Reader';
-  $('drop').classList.add('hide'); await db.put(b); renderTOC(); renderChapter(); renderLib();
+  $('drop').classList.add('hide'); if (persist) await db.put(b); renderTOC(); renderChapter(); renderLib();
 }
 
 // ---------- rendering ----------
@@ -473,14 +489,14 @@ function renderTOC() {
   });
 }
 async function renderLib() {
-  const all = (await db.all() || []).sort((a, b) => b.updated - a.updated);
+  const all = (await db.all() || []).map(b => { const p = prefs.get('pos.' + b.id, null); if (p) { b.ch = p.ch; b.si = p.si; b.updated = Math.max(b.updated || 0, p.t || 0); } return b; }).sort((a, b) => b.updated - a.updated);
   $('lib').innerHTML = all.length ? '' : '<li style="cursor:default;color:var(--muted)">Opened books appear here</li>';
   for (const b of all) {
     const li = document.createElement('li'); if (book && b.id === book.id) li.classList.add('active');
     li.innerHTML = '<span class="t"></span><small></small><button class="x" title="Remove">✕</button>';
     li.querySelector('.t').textContent = b.name; li.querySelector('small').textContent = Math.round(100 * (b.ch + 1) / b.chapters.length) + '%';
-    li.onclick = e => { if (e.target.classList.contains('x')) return; pause(); loadBook(b); };
-    li.querySelector('.x').onclick = async () => { await db.del(b.id); if (book && book.id === b.id) location.reload(); else renderLib(); };
+    li.onclick = e => { if (e.target.classList.contains('x')) return; pause(); loadBook(b, false); };
+    li.querySelector('.x').onclick = async () => { await db.del(b.id); try { localStorage.removeItem('abr.pos.' + b.id); } catch {} if (book && book.id === b.id) location.reload(); else renderLib(); };
     $('lib').appendChild(li);
   }
 }
@@ -492,23 +508,24 @@ function renderChapter() {
     for (const s of p) { const sp = document.createElement('span'); sp.className = 's'; sp.dataset.i = k++; sp.textContent = s + ' '; pe.appendChild(sp); }
     frag.appendChild(pe);
   }
-  box.appendChild(frag);
+  box.appendChild(frag); spans = [...box.querySelectorAll('.s')]; hlCh = -1;
+  prefix = [0]; for (const t of flat[ch]) prefix.push(prefix[prefix.length - 1] + t.length + 1);
   [...$('toc').children].forEach((li, i) => li.classList.toggle('active', i === ch));
   $('seek').max = Math.max(0, flat[ch].length - 1); highlight(true);
 }
-let lastHl = -1;
+let spans = [], hlCh = -1, hlSi = -1, prefix = [], chLen = [], tailLen = [];
 function highlight(scroll) {
-  const spans = $('text').querySelectorAll('.s');
-  spans.forEach(s => { const i = +s.dataset.i; s.classList.toggle('cur', i === si); s.classList.toggle('done', i < si); });
-  const cur = spans[si]; if (cur && scroll && lastHl !== si) cur.scrollIntoView({ block: 'center', behavior: 'smooth' }); lastHl = si;
+  const from = hlCh === ch ? Math.min(hlSi, si) : 0, to = hlCh === ch ? Math.max(hlSi, si) : spans.length - 1;
+  for (let i = Math.max(0, from); i <= to && i < spans.length; i++) { spans[i].classList.toggle('cur', i === si); spans[i].classList.toggle('done', i < si); }
+  const cur = spans[si]; if (cur && scroll && (hlSi !== si || hlCh !== ch)) cur.scrollIntoView({ block: 'center', behavior: 'smooth' }); hlCh = ch; hlSi = si;
   $('seek').value = si; $('pos').textContent = `Ch ${ch + 1}/${flat.length} · ${si + 1}/${flat[ch].length}`;
-  const rem = flat.slice(ch).reduce((n, arr, j) => n + arr.slice(j ? 0 : si).join(' ').length, 0) / (15 * +$('rate').value);
+  const rem = ((tailLen[ch] || 0) + (prefix[flat[ch].length] || 0) - (prefix[Math.min(si, flat[ch].length)] || 0)) / (15 * +$('rate').value);
   $('eta').textContent = rem > 3600 ? `${(rem / 3600).toFixed(1)}h left` : `${Math.ceil(rem / 60)}m left`;
   if ('mediaSession' in navigator && book) try {
     navigator.mediaSession.metadata = new MediaMetadata({ title: book.chapters[ch].title, artist: book.name, album: 'Audiobook Reader' });
   } catch {}
 }
-let saveT; function save() { clearTimeout(saveT); saveT = setTimeout(() => { if (book) { book.ch = ch; book.si = si; book.updated = Date.now(); db.put(book); } }, 400); }
+let saveT; function save() { clearTimeout(saveT); saveT = setTimeout(() => { if (book) { book.ch = ch; book.si = si; prefs.set('pos.' + book.id, { ch, si, t: Date.now() }); } }, 400); }
 
 // ---------- neural voice engine (Kokoro / Piper, runs in a worker) ----------
 const NE = {
@@ -542,10 +559,10 @@ const NE = {
     this.ready[key] = p; p.catch(() => { delete this.ready[key]; hideDl(); });
     return p;
   },
-  gen(engine, voice, text, pri = 0, cache = true) {
+  gen(engine, voice, text, pri = 0, cache = true, owner = 'play') {
     const k = engine + '|' + voice + '|' + text;
     if (cache && this.cache.has(k)) return this.cache.get(k);
-    const p = this.call({ type: 'gen', engine, voice, text, pri, gpu: useGPU() }).then(m => {
+    const p = this.call({ type: 'gen', engine, voice, text, pri, owner, gpu: useGPU() }).then(m => {
       const sec = m.pcm.length / m.sr; this.stats.ms += m.ms; this.stats.sec += sec; this.stats.n++;
       return { pcm: m.pcm, sr: m.sr };
     });
@@ -555,7 +572,7 @@ const NE = {
     }
     return p;
   },
-  clear() { if (this.w) return this.call({ type: 'clear' }).catch(() => {}); },
+  clear(owner = 'play') { if (this.w) return this.call({ type: 'clear', owner }).catch(() => {}); },
   rtf() { return this.stats.sec ? (this.stats.ms / 1000) / this.stats.sec : 0; } // <1 means faster than real time
 };
 const useGPU = () => $('gpu').checked;
@@ -668,7 +685,7 @@ async function speakNeural(my, text) {
     res = await Promise.race([NE.gen(e, v, text, 0), new Promise((_, rej) => setTimeout(() => rej(new Error('Voice generation timed out')), 120000))]);
   } catch (err) {
     clearTimeout(waitT); if (my !== token || err.dropped) return;
-    console.error(err); failures++;
+    console.warn('Voice generation failed:', err.message); failures++;
     if (/timed out/.test(err.message)) NE.reset('timeout');
     if (failures >= 3 || !NE.ready[e === 'kokoro' ? 'kokoro' : 'piper|' + v]) { failures = 0; fallbackToBrowser(`Neural voice failed (${err.message}).`); return speakCurrent(); }
     si++; return speakCurrent();
@@ -714,6 +731,7 @@ function play() {
     if (!confirmDownload(engineName(), $('voice').value)) { fallbackToBrowser('OK.'); }
   }
   if (!isNeural() && !synth) return status('Speech is not supported in this browser. Choose Kokoro or Piper.');
+  if (ch === flat.length - 1 && si >= flat[ch].length) { ch = 0; si = 0; renderChapter(); } // finished: start over
   playing = true; setPlayBtn(); status('');
   if (isNeural() && audioFor && audioFor.ch === ch && audioFor.si === si && audio.currentTime > 0 && !audio.ended && audio.src === audioURL) {
     token++; audioFor.my = token; audio.play().catch(() => speakCurrent()); return;
@@ -764,7 +782,7 @@ async function exportAudio() {
   const total = chs.reduce((n, c) => n + flat[c].length, 0); let done = 0; const t0 = Date.now();
   const setP = msg => { $('exBar').firstElementChild.style.width = (100 * done / total).toFixed(1) + '%'; $('exStatus').textContent = msg; };
   try {
-    setP('Loading voice…'); await NE.load(e, v); await NE.clear();
+    setP('Loading voice…'); await NE.load(e, v); await NE.clear('play');
     if (fmt === 'mp3') await loadScript(LIBS.lame);
     const safe = s => s.replace(/[\\/:*?"<>|]+/g, '').trim().slice(0, 80) || 'audio';
     let enc = null;
@@ -781,7 +799,7 @@ async function exportAudio() {
       const items = (titles ? [{ t: book.chapters[c].title, gap: 0.9 }] : []).concat(flat[c].map((t, i) => ({ t, gap: pend[c].has(i) ? 0.6 : 0.15, count: true })));
       // pipeline: keep a few sentences generating ahead of the encoder
       const reqs = []; let next = 0;
-      const fill = () => { while (next < items.length && reqs.length < 4) { const it = items[next++]; reqs.push({ it, p: speakable(it.t) ? NE.gen(e, v, it.t, 0, false) : Promise.resolve(null) }); } };
+      const fill = () => { while (next < items.length && reqs.length < 4) { const it = items[next++]; reqs.push({ it, p: speakable(it.t) ? NE.gen(e, v, it.t, 0, false, 'export') : Promise.resolve(null) }); } };
       fill();
       while (reqs.length) {
         if (job.cancel) throw new Error('cancelled');
@@ -797,7 +815,7 @@ async function exportAudio() {
     if (enc) finish(enc, scope === 'ch' ? `${safe(book.name)} - ${safe(book.chapters[ch].title)}` : safe(book.name));
     setP(`Done. Saved ${perChapter ? chs.length + ' files' : '1 file'} to your downloads.`);
   } catch (err) {
-    await NE.clear();
+    await NE.clear('export');
     $('exStatus').textContent = err.message === 'cancelled' ? 'Export cancelled.' : 'Export failed: ' + err.message;
   } finally {
     exporting = null; $('exStart').disabled = false; $('exCancel').classList.add('hide');
@@ -882,6 +900,8 @@ window.addEventListener('beforeunload', e => { if (synth) synth.cancel(); if (ex
 window.addEventListener('unhandledrejection', e => { if (e.reason && e.reason.dropped) e.preventDefault(); });
 
 // ---------- init ----------
+{ const pl = document.querySelector('.player'), setPh = () => document.documentElement.style.setProperty('--ph', pl.offsetHeight + 'px');
+  setPh(); if ('ResizeObserver' in window) new ResizeObserver(setPh).observe(pl); else addEventListener('resize', setPh); }
 $('rate').value = prefs.get('rate', 1); $('rateV').textContent = (+$('rate').value).toFixed(1) + '×';
 $('pitch').value = prefs.get('pitch', 1); $('fs').value = prefs.get('fs', 20);
 document.documentElement.style.setProperty('--fs', $('fs').value + 'px');

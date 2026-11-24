@@ -19,3 +19,11 @@ Serve the folder over http(s) (e.g. GitHub Pages, or `python3 -m http.server` in
 - lets the voices use all CPU cores (multithreading),
 - saves downloaded voices so they work offline,
 - avoids re-downloading every visit (opening the file directly from disk works, but cannot cache voices).
+
+## Tests
+20 automated tests (UI, formats, playback, export, stress, chaos) using Playwright + Chromium:
+```
+cd book-reader && python3 -m http.server 8766 &   # serve the app
+cd tests && python3 gen.py && node suite.cjs      # generate fixtures, run suite
+```
+Playback/export tests use a silent built-in `test` engine, so no voice models are downloaded.
