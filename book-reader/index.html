@@ -162,7 +162,8 @@ const PIPER_PATHS = {
 const BLENDS = {
   af_hearth_v1: { name: 'Hearth (our own): warm, natural American narrator (most natural)', mix: { af_heart: 0.6, af_bella: 0.4 } },
   bm_storyteller_v1: { name: 'Storyteller (our own): warm, steady British narrator', mix: { bm_george: 0.5, bm_fable: 0.3, am_michael: 0.2 } },
-  bm_raconteur_v1: { name: 'Raconteur (our own): deeper, richer British narrator', mix: { bm_fable: 0.45, bm_george: 0.3, am_onyx: 0.25 } },
+  // v2 tuned against 26 popular audiobook narrators: better emphasis and sentence-final falls, same deep character
+  bm_raconteur_v2: { name: 'Raconteur (our own): deeper, richer British narrator', mix: { bm_fable: 0.5, bm_george: 0.25, am_onyx: 0.1, am_michael: 0.15 } },
   bm_wit_v1: { name: 'Wit (our own): lighter, playful British narrator', mix: { bm_lewis: 0.4, bm_george: 0.4, am_puck: 0.2 } }
 };
 const VOICE_BASE = 'https://huggingface.co/onnx-community/Kokoro-82M-v1.0-ONNX/resolve/main/voices/';
@@ -599,7 +600,7 @@ const NE = {
     return p;
   },
   gen(engine, voice, text, pri = 0, cache = true, owner = 'play', ctx = null) {
-    const speed = engine === 'kokoro' && storyMode() ? 1.1 : 1; // Storyteller pace: ~150 wpm like pro narration
+    const speed = 1; // Kokoro's natural pace already sits within the range of popular audiobook narrators (~4.5–4.8 syllables/s)
     const k = engine + '|' + voice + '|' + speed + '|' + text;
     if (cache && this.cache.has(k)) return this.cache.get(k);
     const p = engine === 'eleven' ? EL.gen(voice, text, owner, ctx) : this.call({ type: 'gen', engine, voice, text, pri, owner, speed, gpu: useGPU() }).then(m => {
@@ -791,6 +792,11 @@ function findCuts(pcm, sr, w) {
   }
   return cuts;
 }
+function shapeSentence(x, seed) { // speech intensity declines across a phrase (~3 dB); narrators also vary level a little per sentence
+  const n = x.length, jit = (hash01(String(seed)) - 0.5) * 1.6;
+  for (let i = 0; i < n; i++) x[i] *= 10 ** ((1.4 - 3.0 * i / n + jit) / 20);
+  return x;
+}
 function fade(x, sr) { const x2 = new Float32Array(x), n = Math.min(Math.round(sr * 0.012), x2.length >> 1); for (let i = 0; i < n; i++) { const g = i / n; x2[i] *= g; x2[x2.length - 1 - i] *= g; } return x2; }
 // 3) Narration mastering: warmth, less metallic edge, gentle compression, audiobook loudness (ACX: -18..-23 dB RMS, peaks <= -3 dB).
 function biquad(x, type, f0, sr, db = 0, Q = 0.707) {
@@ -811,7 +817,7 @@ function speechRms(x, sr) {
 function master(x, sr) {
   biquad(x, 'hp', 75, sr); biquad(x, 'low', 180, sr, 1.5); biquad(x, 'peak', 5500, sr, -2.5, 1.2); biquad(x, 'high', 9000, sr, -1.5);
   let r = speechRms(x, sr); if (!r) return x; let g = 0.1 / r; for (let i = 0; i < x.length; i++) x[i] *= g; // -20 dBFS
-  const th = 0.0794, ratio = 2.5, at = Math.exp(-1 / (0.008 * sr)), rl = Math.exp(-1 / (0.15 * sr)); let env = 0;   // compressor, -22 dB threshold
+  const th = 0.1, ratio = 1.6, at = Math.exp(-1 / (0.008 * sr)), rl = Math.exp(-1 / (0.15 * sr)); let env = 0;   // gentle compressor (-20 dB, 1.6:1) so emphasis survives
   for (let i = 0; i < x.length; i++) { const v = Math.abs(x[i]); env = v > env ? at * env + (1 - at) * v : rl * env + (1 - rl) * v; if (env > th) x[i] *= (th * (env / th) ** (1 / ratio)) / env; }
   r = speechRms(x, sr); g = r ? 0.112 / r : 1; // -19 dBFS
   for (let i = 0; i < x.length; i++) { let v = x[i] * g; const a = Math.abs(v); if (a > 0.7) v = Math.sign(v) * Math.min(0.89, 0.7 + (a - 0.7) * 0.25); x[i] = v; } // soft limit near -3 dB
@@ -838,7 +844,7 @@ function assemble(res, c, s, j, story, gapAfter) {
   const add = a => { parts.push(a); len += a.length; };
   if (cuts) {
     const bounds = [0, ...cuts, pcm.length];
-    spk.forEach((k, i) => { st.push(len / sr); add(fade(trimSilence(pcm.subarray(bounds[i], bounds[i + 1]), sr), sr)); add(silence(sr, i < spk.length - 1 ? styleGap(c, k) : gapAfter)); });
+    spk.forEach((k, i) => { st.push(len / sr); add(shapeSentence(fade(trimSilence(pcm.subarray(bounds[i], bounds[i + 1]), sr), sr), flat[c][k])); add(silence(sr, i < spk.length - 1 ? styleGap(c, k) : gapAfter)); });
   } else {
     const body = fade(trimSilence(pcm, sr), sr), tot = Math.max(1, spk.reduce((a, k) => a + letters(flat[c][k]), 0)); let acc = 0;
     spk.forEach(k => { st.push(body.length / sr * acc / tot); acc += letters(flat[c][k]); }); add(body); add(silence(sr, gapAfter));
@@ -856,7 +862,7 @@ function trimSilence(pcm, sr) {
 
 // ---------- voices UI ----------
 let browserVoices = [], piperList = null, kokoroList = null;
-const OWN_VOICES = [{ id: 'bm_raconteur_v1', name: 'Raconteur (our own): deeper, richer British narrator', own: true }, { id: 'af_hearth_v1', name: 'Hearth (our own): warm, natural American narrator (most natural)', own: true }, { id: 'bm_storyteller_v1', name: 'Storyteller (our own): warm, steady British narrator', own: true }, { id: 'bm_wit_v1', name: 'Wit (our own): lighter, playful British narrator', own: true }];
+const OWN_VOICES = [{ id: 'bm_raconteur_v2', name: 'Raconteur (our own): deeper, richer British narrator', own: true }, { id: 'af_hearth_v1', name: 'Hearth (our own): warm, natural American narrator (most natural)', own: true }, { id: 'bm_storyteller_v1', name: 'Storyteller (our own): warm, steady British narrator', own: true }, { id: 'bm_wit_v1', name: 'Wit (our own): lighter, playful British narrator', own: true }];
 const KOKORO_FALLBACK = OWN_VOICES.concat(['af_heart','af_bella','af_nicole','af_aoede','af_kore','af_sarah','af_nova','af_sky','af_alloy','af_jessica','af_river','am_michael','am_fenrir','am_puck','am_echo','am_eric','am_liam','am_onyx','am_adam','am_santa','bf_emma','bf_isabella','bf_alice','bf_lily','bm_george','bm_fable','bm_lewis','bm_daniel'].map(id => ({ id })));
 function langPrefix() { return (navigator.language || 'en').slice(0, 2).toLowerCase(); }
 async function fillVoices() {
@@ -881,10 +887,10 @@ async function fillVoices() {
     showCredits();
   } else if (e === 'kokoro') {
     const grade = g => 'ABCDF'.indexOf((g || 'C')[0]);
-    const list = (kokoroList || KOKORO_FALLBACK).slice().sort((a, b) => (b.id === 'bm_raconteur_v1') - (a.id === 'bm_raconteur_v1') || (b.own ? 1 : 0) - (a.own ? 1 : 0) || grade(a.overallGrade) - grade(b.overallGrade));
+    const list = (kokoroList || KOKORO_FALLBACK).slice().sort((a, b) => (b.id === 'bm_raconteur_v2') - (a.id === 'bm_raconteur_v2') || (b.own ? 1 : 0) - (a.own ? 1 : 0) || grade(a.overallGrade) - grade(b.overallGrade));
     const accent = id => id[0] === 'b' ? 'British' : 'American', sex = id => id[1] === 'f' ? 'female' : 'male';
     list.forEach(v => sel.add(new Option(v.own ? '★ ' + v.name : `${v.name || v.id.split('_')[1].replace(/^./, c => c.toUpperCase())}: ${accent(v.id)} ${sex(v.id)}${v.overallGrade ? ' · grade ' + v.overallGrade : ''}${v.traits ? ' ' + v.traits : ''}`, v.id)));
-    sel.value = list.some(v => v.id === saved) ? saved : 'bm_raconteur_v1'; // the user's chosen default narrator
+    sel.value = list.some(v => v.id === saved) ? saved : 'bm_raconteur_v2'; // the user's chosen default narrator
   } else {
     sel.add(new Option('Loading voice list…', '')); sel.disabled = true;
     try { if (!piperList) piperList = (await NE.call({ type: 'voices' })).voices; }

@@ -25,6 +25,9 @@ Neural voices run entirely in your browser (no account, no API key, text never l
 - **ElevenLabs:** gets the surrounding text for continuity and slightly more expressive settings.
 - Compare `samples/storyteller-before.mp3` (old per-sentence) with `samples/storyteller.mp3`.
 
+## Tuned against popular narrators
+Raconteur v2 was tuned by measuring the public preview clips of the 26 most-used storytelling voices on ElevenLabs (pace, pause lengths, pitch range and movement, sentence-final pitch fall, emphasis) and choosing the voice blend and mastering closest to their median. Changes: lighter compression and a natural loudness arc per sentence (more emphasis), and a re-balanced blend whose sentences now fall at the end instead of sounding unfinished. Compare `samples/raconteur-before.mp3` and `samples/raconteur.mp3`.
+
 ## ElevenLabs notes
 - The key is stored only in this browser (localStorage) and sent only to api.elevenlabs.io. Use a restricted key with a credit limit.
 - Every generated sentence is saved on the device, so replays and exports of already-heard text cost no credits.
