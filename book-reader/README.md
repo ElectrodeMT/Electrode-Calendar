@@ -37,6 +37,14 @@ The narrator voices dialogue the way a human narrator does: one performer, a dif
 - Works fully with Kokoro voices; device voices get pitch/pace shades; ElevenLabs and Piper keep the narrator's voice but follow whispers and shouts.
 - Switch to **Narrator only** in the player to turn it off. Sample: `samples/characters.mp3`.
 
+## Get & share
+Tap **⤴** in the app header:
+- **Install** (Android, Chrome/Edge on computers: one tap; iPhone: Safari → Share → Add to Home Screen).
+- **Share link / Copy link / QR code** to send the app to someone. Links show a preview card in messages.
+- **Download ZIP** to keep a copy on a computer.
+
+Public link: https://audiobook-reader-ten.vercel.app
+
 ## Offline
 1. Open the app from its web address (on iPhone: Safari → Share → Add to Home Screen, then open the Home Screen app).
 2. Tap **⤓ Audio → Make available offline** while connected. It saves the app, book readers (PDF/EPUB/Word), MP3 export, the Kokoro model with the narrator and character voices, and optionally your Piper voice and OCR.
@@ -61,7 +69,7 @@ Serve the folder over http(s) (e.g. GitHub Pages, or `python3 -m http.server` in
 - avoids re-downloading every visit (opening the file directly from disk works, but cannot cache voices).
 
 ## Tests
-30 automated tests (UI, formats, playback, export, stress, chaos) using Playwright + Chromium:
+32 automated tests (UI, formats, playback, export, stress, chaos) using Playwright + Chromium:
 ```
 cd book-reader && python3 -m http.server 8766 &   # serve the app
 cd tests && python3 gen.py && node suite.cjs      # generate fixtures, run suite

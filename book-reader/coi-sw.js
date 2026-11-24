@@ -1,10 +1,10 @@
 // Audiobook Reader service worker
 // 1) Offline: keeps the app, its libraries and voice files on the device (cache-first).
 // 2) Speed: adds cross-origin isolation headers so neural voices can use all CPU cores.
-const VERSION = 'v3';
+const VERSION = 'v4';
 const SHELL = 'abr-shell-' + VERSION;
 const CDN = 'abr-cdn-v1'; // libraries & small voice files; survives app updates
-const SHELL_FILES = ['./', './index.html', './manifest.webmanifest', './icon-192.png', './icon-512.png', './apple-touch-icon.png'];
+const SHELL_FILES = ['./', './index.html', './manifest.webmanifest', './icon-192.png', './icon-512.png', './apple-touch-icon.png', './og.png'];
 const CDN_HOSTS = /(^|\.)(jsdelivr\.net|cdnjs\.cloudflare\.com|huggingface\.co|hf\.co|xethub\.hf\.co|projectnaptha\.com)$/;
 
 self.addEventListener('install', e => {

@@ -11,6 +11,15 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="Audiobooks">
+<meta name="description" content="Turn any book, PDF or document into a naturally narrated audiobook, with a voice for every character. Free. Works offline.">
+<meta property="og:type" content="website">
+<meta property="og:title" content="Audiobook Reader">
+<meta property="og:description" content="Turn any book, PDF or document into a naturally narrated audiobook, with a voice for every character. Free. Works offline.">
+<meta property="og:url" content="https://audiobook-reader-ten.vercel.app/">
+<meta property="og:image" content="https://audiobook-reader-ten.vercel.app/og.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta name="twitter:card" content="summary_large_image">
 <style>
 :root{--bg:#f6f4ef;--panel:#fff;--ink:#1d1d1f;--muted:#6b6b70;--line:#e3e0d8;--accent:#2f6f5e;--accent-ink:#fff;--hl:#ffe9a8;--read:#85858b;--warn:#fff4d6;--warn-ink:#6b4e00}
 @media (prefers-color-scheme:dark){:root:not([data-theme=light]){--bg:#121314;--panel:#1b1c1e;--ink:#ececee;--muted:#9a9aa2;--line:#2c2d31;--accent:#5fb39a;--accent-ink:#0d1512;--hl:#4a3f12;--read:#6a6a70;--warn:#3a3014;--warn-ink:#f3d98a}}
@@ -77,6 +86,7 @@ dialog p{margin:6px 0;font-size:14px;color:var(--muted)}
 <header>
   <button class="btn" id="tocToggle" title="Chapters & library">☰</button>
   <h1 id="title">Audiobook Reader</h1>
+  <button class="btn" id="shareBtn" title="Install or share this app" aria-label="Install or share this app">⤴</button>
   <button class="btn" id="audioBtn" title="Export audio, downloads & diagnostics">⤓ Audio</button>
   <button class="btn primary" id="openBtn">Open</button>
   <button class="btn" id="themeBtn" title="Toggle theme">◐</button>
@@ -123,6 +133,28 @@ dialog p{margin:6px 0;font-size:14px;color:var(--muted)}
   <div id="status" role="status"></div>
 </div>
 <audio id="audio" preload="auto"></audio>
+
+<dialog id="shareDlg">
+  <h3 tabindex="-1" autofocus>Get &amp; share Audiobook Reader</h3>
+  <h4>Install on this device</h4>
+  <p id="instInfo">Install it like an app: its own icon, full screen, and it works offline.</p>
+  <div class="r"><button class="btn primary hide" id="installBtn">Install app</button></div>
+  <ol id="iosSteps" class="hide" style="margin:6px 0 0 18px;padding:0;font-size:14px;color:var(--muted)">
+    <li>Tap the <b>Share</b> button in Safari (the square with an arrow).</li>
+    <li>Scroll down and tap <b>Add to Home Screen</b>, then <b>Add</b>.</li>
+    <li>Open <b>Audiobooks</b> from your Home Screen, then use <b>⤓ Audio → Make available offline</b>.</li>
+  </ol>
+  <h4>Share with someone</h4>
+  <div class="r"><input id="shareUrl" readonly aria-label="App link" style="flex:1;min-width:180px;border:1px solid var(--line);background:var(--panel);border-radius:8px;padding:6px"></div>
+  <div class="r"><button class="btn primary" id="shareNow">Share link</button><button class="btn" id="copyLink">Copy link</button></div>
+  <p id="shareMsg"></p>
+  <div class="r" style="justify-content:center"><img id="qr" alt="QR code for the app link" width="180" height="180" style="background:#fff;padding:8px;border-radius:8px;image-rendering:pixelated"></div>
+  <p style="text-align:center">Scan with a phone camera to open the app.</p>
+  <h4>Keep a copy on a computer</h4>
+  <p>Download the app as a ZIP: unzip it and open <b>index.html</b> in Chrome or Edge (installing from the link above works better: voices stay saved).</p>
+  <div class="r"><a class="btn" id="zipLink" href="audiobook-reader.zip" download>Download ZIP</a></div>
+  <div class="r" style="justify-content:flex-end;margin-top:14px"><button class="btn" id="closeShare">Close</button></div>
+</dialog>
 
 <dialog id="audioDlg">
   <h3>Audio</h3>
@@ -328,7 +360,8 @@ const LIBS = {
   jszip: 'https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js',
   mammoth: 'https://cdn.jsdelivr.net/npm/mammoth@1.8.0/mammoth.browser.min.js',
   tesseract: 'https://cdn.jsdelivr.net/npm/tesseract.js@5.1.0/dist/tesseract.min.js',
-  lame: 'https://cdn.jsdelivr.net/npm/lamejs@1.2.1/lame.min.js'
+  lame: 'https://cdn.jsdelivr.net/npm/lamejs@1.2.1/lame.min.js',
+  qr: 'https://cdnjs.cloudflare.com/ajax/libs/qrcode-generator/1.4.4/qrcode.min.js'
 };
 const loaded = {};
 const loadScript = src => loaded[src] ||= new Promise((res, rej) => {
@@ -1398,6 +1431,30 @@ async function renderExports() {
   }
 }
 
+// ---------- install & share ----------
+let installEvt = null;
+const appUrl = () => location.origin + location.pathname.replace(/index\.html$/, '');
+const standalone = () => matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
+addEventListener('beforeinstallprompt', e => { e.preventDefault(); installEvt = e; $('installBtn').classList.remove('hide'); });
+addEventListener('appinstalled', () => { installEvt = null; $('installBtn').classList.add('hide'); status('Installed. Open Audiobooks from your apps or Home Screen.'); });
+async function openShare() {
+  const url = appUrl(), web = /^https?:$/.test(location.protocol);
+  $('shareUrl').value = web ? url : 'Open the app from its web address to share it.';
+  $('instInfo').textContent = standalone() ? 'Installed ✓ You are using the installed app.' : IS_IOS ? 'On iPhone and iPad, install it from Safari:' : installEvt ? 'Install it like an app: its own icon, full screen, and it works offline.' : 'To install: in Chrome or Edge use the install icon in the address bar (or menu → Install app). On Android: menu ⋮ → Install app.';
+  $('iosSteps').classList.toggle('hide', !IS_IOS || standalone());
+  $('shareNow').classList.toggle('hide', !navigator.share); $('shareMsg').textContent = '';
+  $('shareDlg').showModal();
+  try { await loadScript(LIBS.qr); const q = qrcode(0, 'M'); q.addData(url); q.make(); $('qr').src = q.createDataURL(6, 2); } catch { $('qr').alt = 'QR code unavailable offline'; }
+}
+$('shareBtn').onclick = openShare;
+$('closeShare').onclick = () => $('shareDlg').close();
+$('installBtn').onclick = async () => { if (!installEvt) return; installEvt.prompt(); try { const r = await installEvt.userChoice; if (r.outcome === 'accepted') $('installBtn').classList.add('hide'); } catch {} installEvt = null; };
+$('shareNow').onclick = async () => { try { await navigator.share({ title: 'Audiobook Reader', text: 'Turn any book into a narrated audiobook, with a voice for every character. Free and works offline.', url: appUrl() }); } catch (e) { if (e.name !== 'AbortError') $('shareMsg').textContent = 'Sharing is not available here. Copy the link instead.'; } };
+$('copyLink').onclick = async () => {
+  try { await navigator.clipboard.writeText(appUrl()); $('shareMsg').textContent = 'Link copied.'; }
+  catch { $('shareUrl').select(); $('shareMsg').textContent = 'Press Ctrl+C (or Copy) to copy the selected link.'; }
+};
+
 // ---------- offline ----------
 const VOICE_BASE_URL = 'https://huggingface.co/onnx-community/Kokoro-82M-v1.0-ONNX/resolve/main/voices/';
 const OFFLINE_VOICE_PARTS = ['bm_fable', 'bm_george', 'am_onyx', 'am_michael', 'af_heart', 'af_bella', 'bm_lewis', 'am_puck', 'am_fenrir', 'af_sarah', 'af_kore'];
@@ -1410,6 +1467,7 @@ async function makeOffline() {
   const kv = engineName() === 'kokoro' ? $('voice').value : prefs.get('voice.kokoro', 'bm_raconteur_v2');
   const steps = [['App', async () => { await navigator.serviceWorker.ready; await Promise.all(['./', 'manifest.webmanifest', 'icon-192.png', 'icon-512.png', 'apple-touch-icon.png'].map(u => fetch(u).catch(() => {}))); }],
     ['Book readers (PDF, EPUB, Word)', async () => { await loadScript(LIBS.pdf); await fetch(LIBS.pdfWorker); await loadScript(LIBS.jszip); await loadScript(LIBS.mammoth); }],
+    ['Sharing (QR code)', () => loadScript(LIBS.qr)],
     ['MP3 export', () => loadScript(LIBS.lame)]];
   if ($('offKokoro').checked) steps.push(['Kokoro voice model', () => NE.load('kokoro', kv)],
     ['Narrator & character voices', async () => { await Promise.all(OFFLINE_VOICE_PARTS.map(id => fetch(VOICE_BASE_URL + id + '.bin'))); await NE.gen('kokoro', kv, 'Ready.', 0, false, 'export'); }]);
@@ -1522,7 +1580,7 @@ const drop = $('drop');
 document.addEventListener('drop', e => { const f = e.dataTransfer.files[0]; if (f) openFile(f); });
 document.addEventListener('keydown', e => {
   if (/INPUT|SELECT|TEXTAREA/.test(e.target.tagName) && e.target.type !== 'range') return;
-  if ($('audioDlg').open) return;
+  if ($('audioDlg').open || $('shareDlg').open) return;
   if (e.code === 'Space') { e.preventDefault(); playing ? pause() : play(); }
   else if (e.key === 'ArrowLeft') { e.preventDefault(); e.shiftKey ? jump(ch - 1, 0) : step(-1); }
   else if (e.key === 'ArrowRight') { e.preventDefault(); e.shiftKey ? jump(ch + 1, 0) : step(1); }

@@ -305,6 +305,26 @@ add('Offline', '30. Make available offline, then with the network blocked: app l
   return `offline: app + Word + playback + MP3 (${size} bytes)`;
 });
 
+add('Share', '31. Get & share: link, copy, QR code, ZIP download, install info; link-preview tags present', async p => {
+  await p.context().grantPermissions(['clipboard-read', 'clipboard-write'], { origin: URL_ });
+  await p.click('#shareBtn'); await p.waitForFunction(() => document.getElementById('qr').src.startsWith('data:image'), null, { timeout: 15000 });
+  const url = await p.inputValue('#shareUrl'); assert(url === URL_, 'share url ' + url);
+  await p.click('#copyLink'); assert(await p.evaluate(() => navigator.clipboard.readText()) === URL_, 'clipboard'); assert(/copied/.test(await p.textContent('#shareMsg')), 'copy message');
+  assert(await p.getAttribute('#zipLink', 'href') === 'audiobook-reader.zip', 'zip link');
+  assert(/install/i.test(await p.textContent('#instInfo')), 'install info');
+  const og = await p.evaluate(() => ['og:title', 'og:image', 'og:description'].map(k => document.querySelector(`meta[property="${k}"]`)?.content));
+  assert(og.every(Boolean) && /og\.png$/.test(og[1]), 'og tags ' + og);
+  const man = await (await p.request.get(URL_ + 'manifest.webmanifest')).json(); assert(man.icons.length === 2 && man.display === 'standalone', 'manifest');
+  await p.keyboard.press('Escape'); return `link ${url}; QR ok; copy ok; manifest ok`;
+});
+add('Share', '32. iPhone: Get & share shows Add-to-Home-Screen steps', async p => {
+  await p.click('#shareBtn'); await p.waitForTimeout(500);
+  assert(!(await p.$eval('#iosSteps', e => e.classList.contains('hide'))), 'iOS steps hidden');
+  const t = await p.textContent('#iosSteps'); assert(/Add to Home Screen/.test(t), t);
+  const r = await p.evaluate(() => ({ sw: document.documentElement.scrollWidth, w: innerWidth })); assert(r.sw <= r.w, 'overflow on phone');
+  return t.replace(/\s+/g, ' ').slice(0, 70);
+}, { iphone: true });
+
 // ---------- ElevenLabs (mocked API: no real credits used) ----------
 function wavBuf(n, sr = 44100) { const b = Buffer.alloc(44 + n * 2); b.write('RIFF', 0); b.writeUInt32LE(36 + n * 2, 4); b.write('WAVEfmt ', 8); b.writeUInt32LE(16, 16); b.writeUInt16LE(1, 20); b.writeUInt16LE(1, 22); b.writeUInt32LE(sr, 24); b.writeUInt32LE(sr * 2, 28); b.writeUInt16LE(2, 32); b.writeUInt16LE(16, 34); b.write('data', 36); b.writeUInt32LE(n * 2, 40); return b; }
 async function castSet(p, name, idx, value) { // pick a cast row by its exact name label, then set its n-th menu
