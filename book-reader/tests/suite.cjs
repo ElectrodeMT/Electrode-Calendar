@@ -204,6 +204,63 @@ add('Stress', '20. Chaos: 400 random clicks/seeks/keys while neural audio plays'
   return JSON.stringify(s);
 });
 
+// ---------- ElevenLabs (mocked API: no real credits used) ----------
+function wavBuf(n, sr = 44100) { const b = Buffer.alloc(44 + n * 2); b.write('RIFF', 0); b.writeUInt32LE(36 + n * 2, 4); b.write('WAVEfmt ', 8); b.writeUInt32LE(16, 16); b.writeUInt16LE(1, 20); b.writeUInt16LE(1, 22); b.writeUInt32LE(sr, 24); b.writeUInt32LE(sr * 2, 28); b.writeUInt16LE(2, 32); b.writeUInt16LE(16, 34); b.write('data', 36); b.writeUInt32LE(n * 2, 40); return b; }
+async function mockEleven(p, mode = {}) {
+  p.el = { tts: 0, calls: [] }; const H = { 'access-control-allow-origin': '*', 'access-control-allow-headers': '*' };
+  await p.route('https://api.elevenlabs.io/**', async route => {
+    const u = new URL(route.request().url()); p.el.calls.push(u.pathname);
+    if (route.request().method() === 'OPTIONS') return route.fulfill({ status: 200, headers: { ...H, 'access-control-allow-methods': '*' } });
+    if (route.request().headers()['xi-api-key'] !== 'good-key') return route.fulfill({ status: 401, headers: H, contentType: 'application/json', body: JSON.stringify({ detail: { status: 'invalid_api_key', message: 'Invalid API key' } }) });
+    if (u.pathname === '/v1/user/subscription') return route.fulfill({ headers: H, contentType: 'application/json', body: JSON.stringify({ tier: 'free', character_count: 1200, character_limit: 10000 }) });
+    if (u.pathname === '/v1/voices') return route.fulfill({ headers: H, contentType: 'application/json', body: JSON.stringify({ voices: [{ voice_id: 'aaa', name: 'Aria', category: 'premade' }, { voice_id: 'JBFqnCBsd6RMkjVDRZzb', name: 'George', category: 'premade', preview_url: 'https://api.elevenlabs.io/preview.wav' }] }) });
+    if (u.pathname === '/preview.wav') return route.fulfill({ headers: H, contentType: 'audio/wav', body: wavBuf(4410) });
+    if (u.pathname === '/v1/models') return route.fulfill({ headers: H, contentType: 'application/json', body: JSON.stringify([{ model_id: 'eleven_multilingual_v2', name: 'Eleven Multilingual v2', can_do_text_to_speech: true }, { model_id: 'eleven_flash_v2_5', name: 'Eleven Flash v2.5', can_do_text_to_speech: true }]) });
+    if (u.pathname.startsWith('/v1/text-to-speech/')) {
+      p.el.tts++;
+      if (mode.quota && p.el.tts > mode.quota) return route.fulfill({ status: 401, headers: H, contentType: 'application/json', body: JSON.stringify({ detail: { status: 'quota_exceeded', message: 'This request exceeds your quota.' } }) });
+      if (mode.busy && p.el.tts <= mode.busy) return route.fulfill({ status: 429, headers: H, contentType: 'application/json', body: JSON.stringify({ detail: { status: 'too_many_concurrent_requests', message: 'busy' } }) });
+      return route.fulfill({ headers: H, contentType: 'audio/mpeg', body: wavBuf(8820) });
+    }
+    return route.fulfill({ status: 404, headers: H, body: '{}' });
+  });
+}
+async function setKey(p, key) { if (!(await p.$eval('#audioDlg', d => d.open))) await p.click('#audioBtn'); await p.fill('#elKey', key); await p.click('#elSave'); await p.waitForFunction(() => !/Checking/.test(document.getElementById('elInfo').textContent), null, { timeout: 15000 }); }
+add('ElevenLabs', '21. Key check, George default, credits shown, plays book, replay costs no credits', async p => {
+  await mockEleven(p); await open(p, 'book.txt'); await setKey(p, 'good-key');
+  const info = await p.textContent('#elInfo'); assert(/8,800 of 10,000/.test(info), 'credits not shown: ' + info);
+  await p.waitForFunction(() => document.getElementById('engine').value === 'eleven' && document.getElementById('voice').value, null, { timeout: 10000 });
+  assert(await p.$eval('#voice', s => s.value) === 'JBFqnCBsd6RMkjVDRZzb', 'George not default'); await p.keyboard.press('Escape');
+  await p.click('#play'); await p.waitForFunction(() => /Finished/.test(document.getElementById('status').textContent), null, { timeout: 30000 });
+  const first = p.el.tts; await p.click('#play'); await p.waitForTimeout(300); await p.waitForFunction(() => /Finished/.test(document.getElementById('status').textContent), null, { timeout: 30000 });
+  assert(first === 6, `expected 6 TTS requests for 6 sentences, got ${first}`); assert(p.el.tts === first, `replay re-spent credits: ${p.el.tts - first} extra requests`);
+  return `${first} requests first play, 0 on replay; ${info.slice(0, 60)}`;
+});
+add('ElevenLabs', '22. Credits run out mid-book: clear message, falls back to device voices', async p => {
+  await mockEleven(p, { quota: 2 }); await open(p, 'book.txt'); await setKey(p, 'good-key'); await p.keyboard.press('Escape');
+  await p.click('#play'); await p.waitForFunction(() => document.getElementById('engine').value === 'browser', null, { timeout: 20000 });
+  const st_ = await p.textContent('#status'); assert(/credits .* used up/.test(st_) && !(await st(p)).playing, 'message: ' + st_); return st_;
+});
+add('ElevenLabs', '23. Rate limiting (429) is retried automatically; bad key rejected clearly', async p => {
+  await mockEleven(p, { busy: 2 }); await open(p, 'book.txt');
+  await setKey(p, 'wrong-key'); const bad = await p.textContent('#elInfo'); assert(/rejected the API key/.test(bad), 'bad key msg: ' + bad);
+  await setKey(p, 'good-key'); await p.waitForFunction(() => document.getElementById('engine').value === 'eleven', null, { timeout: 10000 }); await p.keyboard.press('Escape');
+  await p.click('#play'); await p.waitForFunction(() => __abr.state.si >= 2, null, { timeout: 30000 });
+  assert((await st(p)).engine === 'eleven', 'fell back instead of retrying'); return `${p.el.tts} TTS calls incl. 2 retried; bad key: "${bad.slice(0, 50)}"`;
+});
+add('ElevenLabs', '24. No key → asks for key (no silent switch); export length exact; free preview', async p => {
+  await mockEleven(p); await open(p, 'book.txt'); await p.selectOption('#engine', 'eleven'); await p.waitForTimeout(200);
+  await p.click('#play'); await p.waitForTimeout(300);
+  assert(await p.$eval('#audioDlg', d => d.open), 'key dialog not opened'); assert((await st(p)).engine === 'eleven' && !(await st(p)).playing, 'engine switched or playing without key');
+  await p.fill('#elKey', 'good-key'); await p.click('#elSave'); await p.waitForFunction(() => document.getElementById('voice').value === 'JBFqnCBsd6RMkjVDRZzb', null, { timeout: 10000 });
+  await p.keyboard.press('Escape'); const before = p.el.tts; await p.click('#sample'); await p.waitForTimeout(500); assert(p.el.tts === before, 'preview spent credits');
+  await p.click('#audioBtn'); await p.selectOption('#exScope', 'ch'); await p.selectOption('#exFmt', 'wav');
+  const [d] = await Promise.all([p.waitForEvent('download', { timeout: 30000 }), p.click('#exStart')]);
+  const samples = fs.readFileSync(await d.path()).readUInt32LE(40) / 2; const g = [0.9, 0.15, 0.6, 0.6].reduce((a, x) => a + Math.round(44100 * x), 0);
+  const exp = [5 * 8820 - 8820 + g, 4 * 8820 + g]; // title + 3 sentences = 4 clips
+  assert(exp.includes(samples), `export samples ${samples}, expected ${exp[1]}`); return `export ${samples} samples; preview free`;
+});
+
 (async () => {
   browser = await chromium.launch({ args: ['--autoplay-policy=no-user-gesture-required'] });
   const only = process.argv[2] ? process.argv[2].split(',').map(Number) : null;

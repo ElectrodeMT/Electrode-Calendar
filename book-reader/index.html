@@ -95,6 +95,7 @@ dialog p{margin:6px 0;font-size:14px;color:var(--muted)}
     <label class="opt">Engine <select id="engine">
       <option value="kokoro">Kokoro: most natural (free, ~92 MB once)</option>
       <option value="piper">Piper: fast, 30+ languages (free)</option>
+      <option value="eleven">ElevenLabs: studio quality (your account, uses credits)</option>
       <option value="browser">Device voices: instant, no download</option>
     </select></label>
     <label class="opt">Voice <select id="voice"></select></label>
@@ -124,6 +125,13 @@ dialog p{margin:6px 0;font-size:14px;color:var(--muted)}
   <div class="r"><button class="btn primary" id="exStart">Start export</button><button class="btn hide" id="exCancel">Cancel</button></div>
   <div class="bar hide" id="exBar"><i></i></div>
   <p id="exStatus"></p>
+  <h4>ElevenLabs (your account)</h4>
+  <p>Paste an API key from elevenlabs.io → Developers → API keys. It's stored only in this browser and sent only to ElevenLabs. Tip: create a key restricted to <i>Text to Speech, Voices (read), Models (read), User (read)</i>, with a credit limit.</p>
+  <div class="r"><input type="password" id="elKey" placeholder="ElevenLabs API key" autocomplete="off" aria-label="ElevenLabs API key" style="flex:1;min-width:180px;border:1px solid var(--line);background:var(--panel);border-radius:8px;padding:6px"><button class="btn sm" id="elSave">Save &amp; check</button><button class="btn sm" id="elForget">Forget key</button></div>
+  <div class="r"><label class="opt">Model <select id="elModel"><option value="eleven_multilingual_v2">Multilingual v2 (recommended for audiobooks)</option><option value="eleven_flash_v2_5">Flash v2.5 (about half the credits)</option></select></label></div>
+  <p id="elInfo">No key saved.</p>
+  <p>Generated sentences are saved on this device, so replaying never spends credits twice. Free-plan audio is for personal use (see ElevenLabs' terms).</p>
+  <div class="r"><button class="btn sm" id="elClearCache">Delete saved ElevenLabs audio</button></div>
   <h4>Speed & hardware</h4>
   <div class="r"><label class="opt"><input type="checkbox" id="gpu"> Use the GPU for Kokoro (much faster, but a 326 MB download instead of 92 MB)</label></div>
   <p id="diag"></p>
@@ -278,16 +286,17 @@ const status = m => $('status').textContent = m || '';
 const db = (() => {
   let p;
   const open = () => p ||= new Promise((res, rej) => {
-    try { const r = indexedDB.open('audiobook-reader', 1);
-      r.onupgradeneeded = () => r.result.createObjectStore('books', { keyPath: 'id' });
+    try { const r = indexedDB.open('audiobook-reader', 2);
+      r.onupgradeneeded = () => { const d = r.result; if (!d.objectStoreNames.contains('books')) d.createObjectStore('books', { keyPath: 'id' }); if (!d.objectStoreNames.contains('audio')) d.createObjectStore('audio'); };
       r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error);
     } catch (e) { rej(e); }
   });
-  const tx = async (mode, fn) => { try { const d = await open(); return await new Promise((res, rej) => {
-    const t = d.transaction('books', mode), st = t.objectStore('books'), r = fn(st);
+  const tx = async (mode, fn, store = 'books') => { try { const d = await open(); return await new Promise((res, rej) => {
+    const t = d.transaction(store, mode), st = t.objectStore(store), r = fn(st);
     t.oncomplete = () => res(r && r.result); t.onerror = () => rej(t.error); }); } catch { return null; } };
   return { put: b => tx('readwrite', s => s.put(b)), get: id => tx('readonly', s => s.get(id)),
-           del: id => tx('readwrite', s => s.delete(id)), all: () => tx('readonly', s => s.getAll()) };
+           del: id => tx('readwrite', s => s.delete(id)), all: () => tx('readonly', s => s.getAll()),
+           aget: k => tx('readonly', s => s.get(k), 'audio'), aput: (k, v) => tx('readwrite', s => s.put(v, k), 'audio'), aclear: () => tx('readwrite', s => s.clear(), 'audio') };
 })();
 const prefs = {
   get(k, d) { try { const v = localStorage.getItem('abr.' + k); return v == null ? d : JSON.parse(v); } catch { return d; } },
@@ -551,8 +560,12 @@ const NE = {
     else w.resolve(m);
   },
   async load(engine, voice) {
-    const key = engine === 'kokoro' ? 'kokoro' : 'piper|' + voice;
+    const key = readyKey(engine, voice);
     if (this.ready[key]) return this.ready[key];
+    if (engine === 'eleven') {
+      const pe = (async () => { if (!EL.key()) throw Object.assign(new Error('Add your ElevenLabs API key first (⤓ Audio).'), { fatal: true }); await EL.check(); showCredits(); return {}; })();
+      this.ready[key] = pe; pe.catch(() => { delete this.ready[key]; }); return pe;
+    }
     const p = this.call({ type: 'load', engine, voice, gpu: useGPU() }).then(m => { if (m.device) this.device[engine] = m.device; hideDl(); markDownloaded(key);
       if (m.voices && !kokoroList) { kokoroList = m.voices; if (engineName() === 'kokoro') { const cur = $('voice').value; fillVoices().then(() => { $('voice').value = cur; }); } }
       return m; });
@@ -562,7 +575,7 @@ const NE = {
   gen(engine, voice, text, pri = 0, cache = true, owner = 'play') {
     const k = engine + '|' + voice + '|' + text;
     if (cache && this.cache.has(k)) return this.cache.get(k);
-    const p = this.call({ type: 'gen', engine, voice, text, pri, owner, gpu: useGPU() }).then(m => {
+    const p = engine === 'eleven' ? EL.gen(voice, text, owner) : this.call({ type: 'gen', engine, voice, text, pri, owner, gpu: useGPU() }).then(m => {
       const sec = m.pcm.length / m.sr; this.stats.ms += m.ms; this.stats.sec += sec; this.stats.n++;
       return { pcm: m.pcm, sr: m.sr };
     });
@@ -572,10 +585,91 @@ const NE = {
     }
     return p;
   },
-  clear(owner = 'play') { if (this.w) return this.call({ type: 'clear', owner }).catch(() => {}); },
+  clear(owner = 'play') { EL.clear(owner); if (this.w) return this.call({ type: 'clear', owner }).catch(() => {}); },
   rtf() { return this.stats.sec ? (this.stats.ms / 1000) / this.stats.sec : 0; } // <1 means faster than real time
 };
 const useGPU = () => $('gpu').checked;
+const readyKey = (e, v) => e === 'kokoro' ? 'kokoro' : e === 'eleven' ? 'eleven' : 'piper|' + v;
+const ENGINE_NAMES = { kokoro: 'Kokoro', piper: 'Piper', eleven: 'ElevenLabs', test: 'Test' };
+
+// ---------- ElevenLabs (user's own account, called directly from the browser) ----------
+const EL_BASE = 'https://api.elevenlabs.io';
+const EL_DEFAULT_VOICE = 'JBFqnCBsd6RMkjVDRZzb'; // "George - Warm, Captivating Storyteller" (premade, available on every plan)
+const creditRate = m => /flash|turbo/i.test(m) ? 0.5 : 1; // approximate credits per character
+let actx = null;
+function elMessage(status, code, msg) {
+  if (/quota_exceeded/.test(code) || /quota/i.test(msg)) return 'Your ElevenLabs credits for this month are used up.';
+  if (status === 401) return 'ElevenLabs rejected the API key (wrong key or missing permission)' + (msg ? ': ' + msg : '.');
+  if (status === 402) return 'This needs a paid ElevenLabs plan' + (msg ? ': ' + msg : '.');
+  if (status === 403) return "This voice or feature isn't available on your ElevenLabs plan" + (msg ? ': ' + msg : '.');
+  if (status === 404) return 'That ElevenLabs voice no longer exists in your account.';
+  if (status === 422) return "ElevenLabs couldn't process this text.";
+  if (status === 429) return 'ElevenLabs is busy (too many requests). Try again shortly.';
+  return `ElevenLabs error ${status}${msg || code ? ': ' + (msg || code) : ''}`;
+}
+const EL = {
+  q: [], active: 0, max: 2, voices: null, sub: null, gens: 0,
+  key: () => prefs.get('elevenKey', ''),
+  model: () => $('elModel').value || 'eleven_multilingual_v2',
+  async api(path, opts = {}, timeout = 60000) {
+    const ctl = new AbortController(), t = setTimeout(() => ctl.abort(), timeout); let r;
+    try { r = await fetch(EL_BASE + path, { ...opts, signal: ctl.signal, headers: { 'xi-api-key': this.key(), ...(opts.headers || {}) } }); }
+    catch (e) { throw Object.assign(new Error(e.name === 'AbortError' ? 'ElevenLabs did not respond in time.' : 'Could not reach ElevenLabs. Check your internet connection.'), { status: 0 }); }
+    finally { clearTimeout(t); }
+    if (!r.ok) {
+      let d = {}; try { d = (await r.json()).detail || {}; } catch {}
+      const code = (typeof d === 'object' && (d.status || d.code)) || '', msg = typeof d === 'string' ? d : (d.message || '');
+      throw Object.assign(new Error(elMessage(r.status, code, msg)), { status: r.status, code, fatal: [401, 402, 403].includes(r.status) || /quota|invalid_api_key|missing_permissions|unusual_activity/.test(code) });
+    }
+    return r;
+  },
+  async check() {
+    const [s, v] = await Promise.all([this.api('/v1/user/subscription').then(r => r.json()), this.api('/v1/voices').then(r => r.json())]);
+    this.sub = s; this.voices = v.voices || []; this.loadModels(); return s;
+  },
+  async loadModels() {
+    try {
+      const tts = (await (await this.api('/v1/models')).json()).filter(x => x.can_do_text_to_speech); if (!tts.length) return;
+      const sel = $('elModel'), cur = prefs.get('elModel', 'eleven_multilingual_v2'); sel.innerHTML = '';
+      tts.forEach(x => sel.add(new Option(x.name + (x.model_id === 'eleven_multilingual_v2' ? ' (recommended for audiobooks)' : creditRate(x.model_id) < 1 ? ' (about half the credits)' : ''), x.model_id)));
+      sel.value = tts.some(x => x.model_id === cur) ? cur : (tts.find(x => x.model_id === 'eleven_multilingual_v2') || tts[0]).model_id;
+    } catch {}
+  },
+  left() { return this.sub && this.sub.character_limit != null ? Math.max(0, this.sub.character_limit - this.sub.character_count) : null; },
+  async refreshSub() { try { this.sub = await (await this.api('/v1/user/subscription')).json(); showCredits(); } catch {} },
+  gen(voice, text, owner) { return new Promise((resolve, reject) => { this.q.push({ voice, text, owner, model: this.model(), resolve, reject }); this.pump(); }); },
+  pump() {
+    while (this.active < this.max && this.q.length) {
+      const j = this.q.shift(); this.active++;
+      this.run(j).then(j.resolve, j.reject).finally(() => { this.active--; this.pump(); });
+    }
+  },
+  async run(j) {
+    const ck = `${j.voice}|${j.model}|${j.text}`; let blob = await db.aget(ck);
+    if (!blob) {
+      for (let a = 0; ; a++) {
+        try {
+          const r = await this.api(`/v1/text-to-speech/${encodeURIComponent(j.voice)}?output_format=mp3_44100_128`, { method: 'POST',
+            headers: { 'Content-Type': 'application/json', Accept: 'audio/mpeg' }, body: JSON.stringify({ text: j.text, model_id: j.model }) });
+          blob = await r.blob(); break;
+        } catch (e) { if ((e.status === 429 || e.status >= 500) && !e.fatal && a < 4) { await new Promise(r => setTimeout(r, 800 * 2 ** a)); continue; } throw e; }
+      }
+      db.aput(ck, blob);
+      if (this.sub) this.sub.character_count += Math.round(j.text.length * creditRate(j.model));
+      if (++this.gens % 15 === 0) this.refreshSub(); else showCredits();
+    }
+    actx ||= new (window.AudioContext || window.webkitAudioContext)();
+    const buf = await actx.decodeAudioData(await blob.arrayBuffer());
+    return { pcm: buf.getChannelData(0).slice(), sr: buf.sampleRate };
+  },
+  clear(owner) { for (let i = this.q.length - 1; i >= 0; i--) if (!owner || this.q[i].owner === owner) this.q.splice(i, 1)[0].reject(Object.assign(new Error('cancelled'), { dropped: true })); }
+};
+function showCredits() {
+  const left = EL.left(); if (left == null) return;
+  const lim = EL.sub.character_limit, mins = Math.round(left / creditRate(EL.model()) / 900);
+  const txt = `ElevenLabs (${EL.sub.tier || 'plan'}): ${left.toLocaleString()} of ${lim.toLocaleString()} credits left this month (about ${mins} min of audio with this model).`;
+  $('elInfo').textContent = txt; if (engineName() === 'eleven' && !playing) status(txt);
+}
 const engineName = () => $('engine').value;
 const isNeural = () => engineName() !== 'browser';
 function markDownloaded(k) { const s = prefs.get('dl', []); if (!s.includes(k)) { s.push(k); prefs.set('dl', s); } }
@@ -611,6 +705,17 @@ async function fillVoices() {
     if (!browserVoices.length) sel.add(new Option('Default voice', ''));
     if (saved && browserVoices.some(v => v.voiceURI === saved)) sel.value = saved;
     else { const best = browserVoices.find(v => /natural|neural|premium|enhanced|google/i.test(v.name) && v.lang.startsWith(langPrefix())); if (best) sel.value = best.voiceURI; }
+  } else if (e === 'eleven') {
+    if (!EL.key()) { sel.add(new Option('Add your API key in ⤓ Audio first', '')); status('To use ElevenLabs, open ⤓ Audio and paste your API key.'); return; }
+    sel.add(new Option('Loading your ElevenLabs voices…', '')); sel.disabled = true;
+    try { if (!EL.voices) await EL.check(); } catch (err) { sel.innerHTML = ''; sel.add(new Option('Could not load voices', '')); sel.disabled = false; status(err.message); return; }
+    if (engineName() !== 'eleven') return;
+    const rank = v => v.voice_id === EL_DEFAULT_VOICE ? 0 : /narrat|story|audiobook/i.test(v.name + ' ' + (v.description || '') + ' ' + JSON.stringify(v.labels || {})) ? 1 : 2;
+    const list = EL.voices.slice().sort((a, b) => rank(a) - rank(b) || a.name.localeCompare(b.name));
+    sel.innerHTML = ''; list.forEach(v => sel.add(new Option(`${v.name}${v.voice_id === EL_DEFAULT_VOICE ? ' ★ best for audiobooks' : ''}${v.category ? ' · ' + v.category : ''}`, v.voice_id)));
+    sel.disabled = false;
+    sel.value = list.some(v => v.voice_id === saved) ? saved : list.some(v => v.voice_id === EL_DEFAULT_VOICE) ? EL_DEFAULT_VOICE : (list[0] || {}).voice_id || '';
+    showCredits();
   } else if (e === 'kokoro') {
     const grade = g => 'ABCDF'.indexOf((g || 'C')[0]);
     const list = (kokoroList || KOKORO_FALLBACK).slice().sort((a, b) => grade(a.overallGrade) - grade(b.overallGrade));
@@ -631,13 +736,15 @@ async function fillVoices() {
   }
 }
 function confirmDownload(e, voice) {
-  const key = e === 'kokoro' ? 'kokoro' : 'piper|' + voice;
+  if (e === 'eleven') { if (EL.key()) return true; status('To use ElevenLabs, open ⤓ Audio and paste your API key.'); openAudio(); setTimeout(() => $('elKey').focus(), 50); return false; }
+  if (e === 'test') return true;
+  const key = readyKey(e, voice);
   if (isDownloaded(key) || NE.ready[key]) return true;
   const mb = e === 'kokoro' ? (useGPU() ? 326 : 92) : ((piperList || []).find(v => v.id === voice) || {}).mb || 60;
   return confirm(`This free ${e === 'kokoro' ? 'Kokoro' : 'Piper'} voice downloads about ${mb} MB once, then works offline. Continue?\n\n(Cancel to use your device's built-in voices instead.)`);
 }
 function fallbackToBrowser(reason) {
-  status(`${reason} Switched to device voices.`);
+  status(`${reason} Switched to device voices.${engineName() === 'eleven' ? ' (Kokoro and Piper are free high-quality alternatives.)' : ''}`);
   $('engine').value = 'browser'; prefs.set('engine', 'browser'); fillVoices();
 }
 
@@ -649,7 +756,7 @@ const nextPos = (c, s) => s + 1 < flat[c].length ? [c, s + 1] : c + 1 < flat.len
 
 function prefetch(my) {
   const e = engineName(), v = $('voice').value; let pos = [ch, si], secs = 0;
-  for (let k = 0; k < 10; k++) {
+  for (let k = 0, ahead = e === 'eleven' ? 2 : 10; k < ahead; k++) { // ElevenLabs: small lookahead so skipping wastes few credits
     pos = nextPos(...pos); if (!pos) break;
     const t = flat[pos[0]][pos[1]]; if (!speakable(t)) continue;
     secs += t.length / 15; NE.gen(e, v, t, 1).catch(() => {});
@@ -679,7 +786,7 @@ async function speakNeural(my, text) {
   const e = engineName(), v = $('voice').value;
   let res, waitT = setTimeout(() => { if (my === token) { status('Generating voice…'); stalls++; } }, 400);
   try {
-    if (!NE.ready[e === 'kokoro' ? 'kokoro' : 'piper|' + v]) { status(`Loading ${e === 'kokoro' ? 'Kokoro' : 'Piper'} voice…`); await NE.load(e, v); }
+    if (!NE.ready[readyKey(e, v)]) { status(`Loading ${ENGINE_NAMES[e] || e} voice…`); await NE.load(e, v); }
     if (my !== token) return;
     prefetch(my);
     res = await Promise.race([NE.gen(e, v, text, 0), new Promise((_, rej) => setTimeout(() => rej(new Error('Voice generation timed out')), 120000))]);
@@ -687,7 +794,11 @@ async function speakNeural(my, text) {
     clearTimeout(waitT); if (my !== token || err.dropped) return;
     console.warn('Voice generation failed:', err.message); failures++;
     if (/timed out/.test(err.message)) NE.reset('timeout');
-    if (failures >= 3 || !NE.ready[e === 'kokoro' ? 'kokoro' : 'piper|' + v]) { failures = 0; fallbackToBrowser(`Neural voice failed (${err.message}).`); return speakCurrent(); }
+    if (err.fatal || failures >= 3 || !NE.ready[readyKey(e, v)]) {
+      failures = 0;
+      if (e === 'eleven') { const m = err.message; fallbackToBrowser(m); return pause(`${m} Switched to device voices: press Play to keep listening (Kokoro and Piper are free high-quality options).`); }
+      fallbackToBrowser(`Neural voice failed (${err.message}).`); return speakCurrent();
+    }
     si++; return speakCurrent();
   }
   clearTimeout(waitT); if (my !== token || !playing) return;
@@ -728,7 +839,7 @@ function play() {
   if (!book) { $('file').click(); return; }
   if (isNeural()) {
     unlockAudio();
-    if (!confirmDownload(engineName(), $('voice').value)) { fallbackToBrowser('OK.'); }
+    if (!confirmDownload(engineName(), $('voice').value)) { if (engineName() === 'eleven') return; fallbackToBrowser('OK.'); }
   }
   if (!isNeural() && !synth) return status('Speech is not supported in this browser. Choose Kokoro or Piper.');
   if (ch === flat.length - 1 && si >= flat[ch].length) { ch = 0; si = 0; renderChapter(); } // finished: start over
@@ -772,6 +883,12 @@ async function exportAudio() {
   }
   const v = $('voice').value; if (!v) return alert('Pick a voice first.');
   if (!confirmDownload(e, v)) return;
+  if (e === 'eleven') {
+    const sc = $('exScope').value, list = sc === 'ch' ? [ch] : sc === 'rest' ? flat.map((_, i) => i).filter(i => i >= ch) : flat.map((_, i) => i);
+    const need = Math.round(list.reduce((n, c) => n + chLen[c], 0) * creditRate(EL.model()));
+    await EL.refreshSub(); const left = EL.left();
+    if (!confirm(`This export needs up to about ${need.toLocaleString()} ElevenLabs credits${left != null ? ` (you have ${left.toLocaleString()} left)` : ''}. Sentences you've already played are reused for free.${left != null && need > left ? '\n\nThat is more than you have left, so the export will stop when credits run out.' : ''}\n\nContinue?`)) return;
+  }
   const scope = $('exScope').value, fmt = $('exFmt').value, titles = $('exTitles').checked;
   const chs = scope === 'ch' ? [ch] : scope === 'rest' ? flat.map((_, i) => i).filter(i => i >= ch) : flat.map((_, i) => i);
   const perChapter = scope === 'chapters';
@@ -781,14 +898,14 @@ async function exportAudio() {
   let wake = null; try { wake = await navigator.wakeLock?.request('screen'); } catch {}
   const total = chs.reduce((n, c) => n + flat[c].length, 0); let done = 0; const t0 = Date.now();
   const setP = msg => { $('exBar').firstElementChild.style.width = (100 * done / total).toFixed(1) + '%'; $('exStatus').textContent = msg; };
+  const safe = s => s.replace(/[\\/:*?"<>|]+/g, '').trim().slice(0, 80) || 'audio';
+  let enc = null, finish = null;
   try {
     setP('Loading voice…'); await NE.load(e, v); await NE.clear('play');
     if (fmt === 'mp3') await loadScript(LIBS.lame);
-    const safe = s => s.replace(/[\\/:*?"<>|]+/g, '').trim().slice(0, 80) || 'audio';
-    let enc = null;
     const newEnc = sr => fmt === 'mp3' ? { sr, lame: new lamejs.Mp3Encoder(1, sr, 64), parts: [] } : { sr, parts: [], n: 0 };
     const push = (en, f) => { const i16 = floatToInt16(f); if (fmt === 'mp3') { for (let k = 0; k < i16.length; k += 11520) { const b = en.lame.encodeBuffer(i16.subarray(k, k + 11520)); if (b.length) en.parts.push(new Uint8Array(b)); } } else { en.parts.push(i16); en.n += i16.length; } };
-    const finish = (en, name) => {
+    finish = (en, name) => {
       let blob;
       if (fmt === 'mp3') { const b = en.lame.flush(); if (b.length) en.parts.push(new Uint8Array(b)); blob = new Blob(en.parts, { type: 'audio/mpeg' }); }
       else blob = new Blob([wavHeader(en.n, en.sr), ...en.parts], { type: 'audio/wav' });
@@ -804,7 +921,7 @@ async function exportAudio() {
       while (reqs.length) {
         if (job.cancel) throw new Error('cancelled');
         const { it, p } = reqs.shift(); fill();
-        let r = null; try { r = await p; } catch (err) { if (job.cancel) throw new Error('cancelled'); console.warn('skip', err); }
+        let r = null; try { r = await p; } catch (err) { if (job.cancel) throw new Error('cancelled'); if (err.fatal) throw err; console.warn('skip', err); }
         if (r) { if (!enc) enc = newEnc(r.sr); push(enc, r.pcm); push(enc, silence(enc.sr, it.gap)); }
         if (it.count) done++;
         const el = (Date.now() - t0) / 1000, eta = done ? el / done * (total - done) : 0;
@@ -816,6 +933,7 @@ async function exportAudio() {
     setP(`Done. Saved ${perChapter ? chs.length + ' files' : '1 file'} to your downloads.`);
   } catch (err) {
     await NE.clear('export');
+    if (enc && finish && err.fatal) { try { finish(enc, `${safe(book.name)} - partial`); } catch {} }
     $('exStatus').textContent = err.message === 'cancelled' ? 'Export cancelled.' : 'Export failed: ' + err.message;
   } finally {
     exporting = null; $('exStart').disabled = false; $('exCancel').classList.add('hide');
@@ -836,7 +954,20 @@ async function refreshDiag() {
     $('storage').textContent = `This site is using ${(est.usage / 1e6).toFixed(0)} MB of storage. Downloaded: ${prefs.get('dl', []).map(k => k.replace('piper|', 'Piper ')).join(', ') || 'none yet'}.`;
   } catch { $('storage').textContent = 'Storage info unavailable.'; }
 }
-$('audioBtn').onclick = () => { refreshDiag(); $('audioDlg').showModal(); };
+function openAudio() { refreshDiag(); if (!$('audioDlg').open) $('audioDlg').showModal(); }
+$('audioBtn').onclick = openAudio;
+function elKeyState() { $('elKey').placeholder = EL.key() ? 'Key saved (paste a new one to replace)' : 'ElevenLabs API key'; if (!EL.key()) $('elInfo').textContent = 'No key saved.'; }
+$('elSave').onclick = async () => {
+  const k = $('elKey').value.trim(); if (k) prefs.set('elevenKey', k); $('elKey').value = '';
+  if (!EL.key()) { $('elInfo').textContent = 'Paste a key first.'; return; }
+  EL.voices = null; EL.sub = null; delete NE.ready.eleven; $('elInfo').textContent = 'Checking key…';
+  try { await EL.check(); showCredits(); if (engineName() === 'eleven') fillVoices(); else if (confirm('Key works. Switch the reader to ElevenLabs now?')) { $('engine').value = 'eleven'; $('engine').onchange(); } }
+  catch (err) { $('elInfo').textContent = err.message; }
+  elKeyState();
+};
+$('elForget').onclick = () => { try { localStorage.removeItem('abr.elevenKey'); } catch {} EL.voices = null; EL.sub = null; delete NE.ready.eleven; elKeyState(); if (engineName() === 'eleven') { pause(); fillVoices(); } };
+$('elModel').onchange = () => { prefs.set('elModel', $('elModel').value); showCredits(); if (playing && engineName() === 'eleven') jump(ch, si, true); };
+$('elClearCache').onclick = async () => { if (confirm('Delete saved ElevenLabs audio? Replaying will spend credits again.')) { await db.aclear(); $('elInfo').textContent = 'Saved ElevenLabs audio deleted.'; } };
 $('closeDlg').onclick = () => $('audioDlg').close();
 $('exStart').onclick = exportAudio;
 $('exCancel').onclick = () => { if (exporting) exporting.cancel = true; };
@@ -871,6 +1002,10 @@ $('sample').onclick = async () => {
   const e = engineName(), v = $('voice').value, txt = 'Hello! This is how I sound when reading your books.';
   pause();
   if (e === 'browser') { const u = new SpeechSynthesisUtterance(txt); const bv = browserVoices.find(x => x.voiceURI === v); if (bv) u.voice = bv; u.rate = +$('rate').value; u.pitch = +$('pitch').value; synth && synth.speak(u); return; }
+  if (e === 'eleven') { // official preview clips are free (no credits)
+    const vv = (EL.voices || []).find(x => x.voice_id === v);
+    if (vv && vv.preview_url) { audioFor = null; audio.src = vv.preview_url; audio.playbackRate = 1; audio.play().catch(err => status('Could not play preview: ' + err.message)); return; }
+  }
   unlockAudio(); if (!confirmDownload(e, v)) return;
   try { status('Preparing sample…'); await NE.load(e, v); const r = await NE.gen(e, v, txt);
     if (audioURL) URL.revokeObjectURL(audioURL); audioURL = URL.createObjectURL(new Blob([wavHeader(r.pcm.length, r.sr), floatToInt16(r.pcm)], { type: 'audio/wav' }));
@@ -908,6 +1043,8 @@ document.documentElement.style.setProperty('--fs', $('fs').value + 'px');
 const th = prefs.get('theme', null); if (th) document.documentElement.dataset.theme = th;
 const mobile = navigator.userAgentData ? navigator.userAgentData.mobile : /Mobi|Android|iPhone|iPad/i.test(navigator.userAgent);
 $('gpu').checked = prefs.get('gpu', false);
+{ const m = prefs.get('elModel', null); if (m) { if (![...$('elModel').options].some(o => o.value === m)) $('elModel').add(new Option(m, m)); $('elModel').value = m; } }
+elKeyState();
 if (prefs.get('gpu', null) === null && navigator.gpu && !mobile) { // default on only for a real (non-software) GPU
   navigator.gpu.requestAdapter().then(a => { if (a && !(a.isFallbackAdapter || (a.info && a.info.isFallbackAdapter))) $('gpu').checked = true; }).catch(() => {});
 }
