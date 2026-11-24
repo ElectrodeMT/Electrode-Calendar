@@ -267,7 +267,7 @@ add('Characters', '28. Dialogue: speakers, pronouns, turn-taking, whispers; cons
   await p.click('#audioBtn'); const names = await p.$$eval('#castList li .t', l => l.map(x => x.textContent)); assert(names.length === 3, 'cast list ' + names.join('|'));
   await castSet(p, 'Arthur', 0, 'm3'); await p.keyboard.press('Escape');
   const v2 = await p.evaluate(() => { const n = document.querySelectorAll('#text .s').length; for (let s = 0; s < n; s++) { const ps = __abr.parts(0, s); const i = ps.findIndex(x => x.who === 'arthur'); if (i >= 0) return __abr.partVoice(0, s, i).voice; } });
-  assert(/am_adam/.test(v2), 'cast change not applied: ' + v2);
+  assert(/af_kore/.test(v2), 'cast change not applied: ' + v2);
   await testEngine(p); await p.click('#play'); await p.waitForFunction(() => /Finished/.test(document.getElementById('status').textContent), null, { timeout: 30000 });
   await p.click('#audioBtn'); await p.selectOption('#exScope', 'ch'); await p.selectOption('#exFmt', 'wav');
   const [d] = await Promise.all([p.waitForEvent('download', { timeout: 30000 }), p.click('#exStart')]);
