@@ -2,7 +2,7 @@ const { chromium } = require('playwright'); const fs = require('fs'); const path
 const URL_ = 'http://localhost:8766/'; const F = f => path.join(__dirname, f);
 const results = []; let browser;
 async function page(opts = {}) {
-  const ctx = await browser.newContext({ acceptDownloads: true, viewport: opts.viewport || { width: 1280, height: 800 }, colorScheme: opts.colorScheme || 'light' });
+  const ctx = await browser.newContext(opts.iphone ? { acceptDownloads: true, ...require('playwright').devices['iPhone 13'] } : { acceptDownloads: true, viewport: opts.viewport || { width: 1280, height: 800 }, colorScheme: opts.colorScheme || 'light' });
   const p = await ctx.newPage(); p.errs = []; p.dialogs = [];
   p.on('pageerror', e => p.errs.push(e.message)); p.on('console', m => { if (m.type() === 'error' && !/SecurityError|Failed to load resource/.test(m.text())) p.errs.push(m.text().slice(0, 200)); });
   p.on('dialog', d => { p.dialogs.push(d.type() + ':' + d.message().slice(0, 60)); d.accept(); });
@@ -237,6 +237,20 @@ add('Style', '26. Natural output: phrase groups, varied pauses, audiobook loudne
   assert(longest < 240, `dead digital silence: ${(longest / 24).toFixed(0)} ms of exact zeros`);
   return `speech ${rmsDb.toFixed(1)} dB RMS, peak ${peakDb.toFixed(1)} dB, longest digital silence ${(longest / 24).toFixed(1)} ms, jittered gap ${r.g[0]} vs base ${r.g[1]}`;
 });
+
+add('iPhone', '27. iPhone: export kept in "Your audio files", Save works on tap, survives reload, can be removed', async p => {
+  await open(p, 'book.txt'); await testEngine(p); await p.click('#audioBtn'); await p.selectOption('#exScope', 'ch'); await p.selectOption('#exFmt', 'mp3');
+  let autoDl = 0; p.on('download', () => autoDl++);
+  await p.click('#exStart'); await p.waitForFunction(() => /Done/.test(document.getElementById('exStatus').textContent), null, { timeout: 30000 }); await p.waitForTimeout(500);
+  assert(autoDl === 0, 'iPhone should not auto-download (Safari blocks it)');
+  const rows = await p.$$eval('#exFiles li', l => l.map(x => x.textContent)); assert(rows.length === 1 && /Chapter 1\.mp3/.test(rows[0]), 'list: ' + rows.join('|'));
+  const [d] = await Promise.all([p.waitForEvent('download', { timeout: 10000 }), p.click('#exFiles li button:has-text("Save")')]);
+  const size = fs.statSync(await d.path()).size; assert(size > 500 && d.suggestedFilename().endsWith('.mp3'), 'saved file ' + size);
+  await p.reload(); await p.waitForTimeout(800); await p.click('#audioBtn'); await p.waitForTimeout(300);
+  assert((await p.$$('#exFiles li')).length === 1, 'file not kept after reload');
+  await p.click('#exFiles li button:has-text("Delete")'); await p.waitForTimeout(300); assert((await p.$$('#exFiles li')).length === 0, 'remove failed');
+  return `${d.suggestedFilename()} ${size} bytes; hint: ${(await p.textContent('#exHint')).slice(0, 40)}`;
+}, { iphone: true });
 
 // ---------- ElevenLabs (mocked API: no real credits used) ----------
 function wavBuf(n, sr = 44100) { const b = Buffer.alloc(44 + n * 2); b.write('RIFF', 0); b.writeUInt32LE(36 + n * 2, 4); b.write('WAVEfmt ', 8); b.writeUInt32LE(16, 16); b.writeUInt16LE(1, 20); b.writeUInt16LE(1, 22); b.writeUInt32LE(sr, 24); b.writeUInt32LE(sr * 2, 28); b.writeUInt16LE(2, 32); b.writeUInt16LE(16, 34); b.write('data', 36); b.writeUInt32LE(n * 2, 40); return b; }
