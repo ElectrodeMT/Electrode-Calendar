@@ -1,0 +1,474 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Audiobook Reader</title>
+<style>
+:root{--bg:#f6f4ef;--panel:#fff;--ink:#1d1d1f;--muted:#6b6b70;--line:#e3e0d8;--accent:#2f6f5e;--accent-ink:#fff;--hl:#ffe9a8;--read:#9a9aa0}
+@media (prefers-color-scheme:dark){:root:not([data-theme=light]){--bg:#121314;--panel:#1b1c1e;--ink:#ececee;--muted:#9a9aa2;--line:#2c2d31;--accent:#5fb39a;--accent-ink:#0d1512;--hl:#4a3f12;--read:#6a6a70}}
+:root[data-theme=dark]{--bg:#121314;--panel:#1b1c1e;--ink:#ececee;--muted:#9a9aa2;--line:#2c2d31;--accent:#5fb39a;--accent-ink:#0d1512;--hl:#4a3f12;--read:#6a6a70}
+*{box-sizing:border-box}
+html,body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.5 system-ui,-apple-system,Segoe UI,Roboto,sans-serif}
+button,select,input{font:inherit;color:inherit}
+header{display:flex;align-items:center;gap:12px;padding:12px 16px;border-bottom:1px solid var(--line);background:var(--panel);position:sticky;top:0;z-index:5}
+header h1{font-size:18px;margin:0;flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.btn{border:1px solid var(--line);background:var(--panel);border-radius:10px;padding:8px 12px;cursor:pointer}
+.btn:hover{border-color:var(--accent)}
+.btn.primary{background:var(--accent);color:var(--accent-ink);border-color:var(--accent)}
+.btn:disabled{opacity:.45;cursor:default}
+main{display:grid;grid-template-columns:280px 1fr;min-height:calc(100vh - 57px)}
+aside{border-right:1px solid var(--line);background:var(--panel);overflow:auto;max-height:calc(100vh - 57px - 132px);position:sticky;top:57px}
+aside h2{font-size:12px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin:16px 16px 6px}
+.list{list-style:none;margin:0;padding:0 8px 12px}
+.list li{padding:7px 10px;border-radius:8px;cursor:pointer;font-size:14px;display:flex;gap:8px;align-items:center}
+.list li:hover{background:var(--bg)}
+.list li.active{background:var(--accent);color:var(--accent-ink)}
+.list li .x{margin-left:auto;opacity:.5;border:0;background:none;cursor:pointer}
+.list li span.t{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#reader{padding:24px 16px 180px;max-width:760px;margin:0 auto;width:100%}
+#reader h2{font-family:Georgia,serif;font-weight:600;margin-top:0}
+#text{font-family:Georgia,'Times New Roman',serif;font-size:var(--fs,20px);line-height:1.7}
+#text p{margin:0 0 1em}
+.s{cursor:pointer;border-radius:4px;transition:background .15s}
+.s:hover{text-decoration:underline dotted}
+.s.cur{background:var(--hl)}
+.s.done{color:var(--read)}
+#drop{border:2px dashed var(--line);border-radius:16px;padding:48px 20px;text-align:center;color:var(--muted);margin-top:24px}
+#drop.over{border-color:var(--accent);color:var(--ink)}
+#drop strong{color:var(--ink);font-size:20px;display:block;margin-bottom:8px}
+.player{position:fixed;left:0;right:0;bottom:0;background:var(--panel);border-top:1px solid var(--line);padding:10px 16px 14px;z-index:6}
+.row{display:flex;gap:8px;align-items:center;flex-wrap:wrap;justify-content:center}
+.ctrl{width:44px;height:44px;border-radius:50%;padding:0;display:inline-grid;place-items:center;font-size:18px}
+.ctrl.big{width:56px;height:56px;font-size:22px}
+.prog{display:flex;align-items:center;gap:10px;margin:0 auto 8px;max-width:900px;font-size:12px;color:var(--muted)}
+.prog input{flex:1}
+label.opt{font-size:13px;color:var(--muted);display:flex;align-items:center;gap:6px}
+select{max-width:220px;border:1px solid var(--line);background:var(--panel);border-radius:8px;padding:6px}
+#status{font-size:13px;color:var(--muted);text-align:center;min-height:18px;margin-top:4px}
+.hide{display:none!important}
+@media (max-width:760px){main{grid-template-columns:1fr}aside{position:static;max-height:none;border-right:0;border-bottom:1px solid var(--line)}#tocToggle{display:inline-block}}
+@media (min-width:761px){#tocToggle{display:none}}
+</style>
+</head>
+<body>
+<header>
+  <button class="btn" id="tocToggle" title="Chapters & library">☰</button>
+  <h1 id="title">Audiobook Reader</h1>
+  <button class="btn primary" id="openBtn">Open file</button>
+  <button class="btn" id="themeBtn" title="Toggle theme">◐</button>
+  <input type="file" id="file" class="hide" accept=".txt,.md,.markdown,.html,.htm,.xhtml,.xml,.pdf,.epub,.docx,.odt,.rtf,.csv,.tsv,.json,.log,.srt,.vtt,.js,.ts,.py,.java,.c,.cpp,.cs,.go,.rb,.php,.css,.sql,.yaml,.yml,.ini,.png,.jpg,.jpeg,.webp,.bmp,.gif,.tif,.tiff,text/*,image/*">
+</header>
+<main>
+  <aside id="side">
+    <h2>Chapters</h2><ul class="list" id="toc"></ul>
+    <h2>Library</h2><ul class="list" id="lib"></ul>
+  </aside>
+  <section id="reader">
+    <div id="drop"><strong>Drop any file here</strong>PDF · EPUB · DOCX · ODT · RTF · TXT · Markdown · HTML · code · CSV/JSON · images (OCR)<br><br><button class="btn primary" id="openBtn2">Choose a file</button><br><br><button class="btn" id="pasteBtn">Or paste text</button></div>
+    <h2 id="chTitle"></h2>
+    <div id="text"></div>
+  </section>
+</main>
+<div class="player">
+  <div class="prog"><span id="pos">0 / 0</span><input type="range" id="seek" min="0" max="0" value="0"><span id="eta">--</span></div>
+  <div class="row">
+    <button class="btn ctrl" id="prevCh" title="Previous chapter (Shift+←)">⏮</button>
+    <button class="btn ctrl" id="back" title="Previous sentence (←)">↺</button>
+    <button class="btn ctrl big primary" id="play" title="Play/Pause (Space)">▶</button>
+    <button class="btn ctrl" id="fwd" title="Next sentence (→)">↻</button>
+    <button class="btn ctrl" id="nextCh" title="Next chapter (Shift+→)">⏭</button>
+  </div>
+  <div class="row" style="margin-top:8px">
+    <label class="opt">Voice <select id="voice"></select></label>
+    <label class="opt">Speed <input type="range" id="rate" min="0.5" max="3" step="0.1" value="1"><span id="rateV">1.0×</span></label>
+    <label class="opt">Pitch <input type="range" id="pitch" min="0.5" max="1.5" step="0.1" value="1"></label>
+    <label class="opt">Text <input type="range" id="fs" min="14" max="32" step="1" value="20"></label>
+    <label class="opt">Sleep <select id="sleep"><option value="0">Off</option><option value="5">5 min</option><option value="15">15 min</option><option value="30">30 min</option><option value="60">60 min</option><option value="ch">End of chapter</option></select></label>
+  </div>
+  <div id="status"></div>
+</div>
+
+<script>
+(() => {
+'use strict';
+const $ = id => document.getElementById(id);
+const synth = window.speechSynthesis;
+const LIBS = {
+  pdf: 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js',
+  pdfWorker: 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js',
+  jszip: 'https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js',
+  mammoth: 'https://cdn.jsdelivr.net/npm/mammoth@1.8.0/mammoth.browser.min.js',
+  tesseract: 'https://cdn.jsdelivr.net/npm/tesseract.js@5.1.0/dist/tesseract.min.js'
+};
+const loaded = {};
+const loadScript = src => loaded[src] ||= new Promise((res, rej) => {
+  const s = document.createElement('script'); s.src = src; s.onload = res;
+  s.onerror = () => { delete loaded[src]; rej(new Error('Failed to load ' + src)); };
+  document.head.appendChild(s);
+});
+
+// ---------- state ----------
+let book = null;          // {id,name,chapters:[{title,paras:[[sentence,...],...]}]}
+let flat = [];            // per chapter: flat sentence list
+let ch = 0, si = 0;       // chapter index, sentence index
+let playing = false, token = 0, sleepAt = 0, sleepEndCh = false;
+const status = m => $('status').textContent = m || '';
+
+// ---------- storage (IndexedDB, all failures non-fatal) ----------
+const db = (() => {
+  let p;
+  const open = () => p ||= new Promise((res, rej) => {
+    try { const r = indexedDB.open('audiobook-reader', 1);
+      r.onupgradeneeded = () => r.result.createObjectStore('books', { keyPath: 'id' });
+      r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error);
+    } catch (e) { rej(e); }
+  });
+  const tx = async (mode, fn) => { try { const d = await open(); return await new Promise((res, rej) => {
+    const t = d.transaction('books', mode), st = t.objectStore('books'), r = fn(st);
+    t.oncomplete = () => res(r && r.result); t.onerror = () => rej(t.error); }); } catch { return null; } };
+  return {
+    put: b => tx('readwrite', s => s.put(b)),
+    get: id => tx('readonly', s => s.get(id)),
+    del: id => tx('readwrite', s => s.delete(id)),
+    all: () => tx('readonly', s => s.getAll())
+  };
+})();
+const prefs = {
+  get(k, d) { try { const v = localStorage.getItem('abr.' + k); return v == null ? d : JSON.parse(v); } catch { return d; } },
+  set(k, v) { try { localStorage.setItem('abr.' + k, JSON.stringify(v)); } catch {} }
+};
+
+// ---------- text processing ----------
+const MAX = 220;
+const segmenter = 'Segmenter' in Intl ? new Intl.Segmenter(undefined, { granularity: 'sentence' }) : null;
+function sentences(p) {
+  p = p.replace(/\s+/g, ' ').trim(); if (!p) return [];
+  let out = segmenter ? [...segmenter.segment(p)].map(x => x.segment.trim())
+                      : (p.match(/[^.!?。！？]+[.!?。！？]+["'”’)\]]*|\S[^.!?。！？]*$/g) || [p]).map(x => x.trim());
+  out = out.filter(Boolean).reduce((a, s) => { // re-join splits after abbreviations
+    if (a.length && /\b(Mr|Mrs|Ms|Dr|Prof|St|Sr|Jr|vs|etc|e\.g|i\.e|No|Fig|[A-Z])\.$/.test(a[a.length - 1])) a[a.length - 1] += ' ' + s; else a.push(s);
+    return a; }, []);
+  const res = [];
+  for (let s of out) {
+    while (s.length > MAX) { // split long runs at punctuation, then whitespace
+      let cut = Math.max(s.lastIndexOf(', ', MAX), s.lastIndexOf('; ', MAX), s.lastIndexOf(': ', MAX));
+      if (cut < MAX / 3) cut = s.lastIndexOf(' ', MAX); if (cut < 1) cut = MAX;
+      res.push(s.slice(0, cut + 1).trim()); s = s.slice(cut + 1).trim();
+    }
+    if (s) res.push(s);
+  }
+  return res;
+}
+const toParas = text => text.replace(/\r\n?/g, '\n').split(/\n\s*\n|\n(?=\s{2,}|\t)/).map(sentences).filter(a => a.length);
+function chapter(title, text) { const paras = toParas(text); return paras.length ? { title: title || 'Section', paras } : null; }
+
+function splitPlain(text, name) {
+  text = text.replace(/\r\n?/g, '\n');
+  const re = /^[ \t]*((chapter|part|book|section|prologue|epilogue|introduction|preface|act)\b[^\n]{0,80}|#{1,3} [^\n]+)$/gim;
+  const marks = [...text.matchAll(re)];
+  if (marks.length >= 2) {
+    const out = []; const pre = text.slice(0, marks[0].index).trim();
+    if (pre) out.push(chapter('Opening', pre));
+    marks.forEach((m, i) => out.push(chapter(m[1].replace(/^#+\s*/, '').trim(),
+      text.slice(m.index + m[0].length, i + 1 < marks.length ? marks[i + 1].index : undefined))));
+    return out.filter(Boolean);
+  }
+  // no headings: chunk into ~6000 char parts on paragraph boundaries
+  const paras = text.split(/\n\s*\n/), out = []; let buf = '', n = 1;
+  for (const p of paras) { buf += p + '\n\n'; if (buf.length > 6000) { out.push(chapter(`Part ${n++}`, buf)); buf = ''; } }
+  if (buf.trim()) out.push(chapter(out.length ? `Part ${n}` : name, buf));
+  return out.filter(Boolean);
+}
+
+function splitHtmlDoc(doc, fallback) {
+  doc.querySelectorAll('script,style,noscript,nav,svg,head,template').forEach(e => e.remove());
+  const body = doc.body || doc.documentElement;
+  const blocks = body.querySelectorAll('h1,h2,h3,p,li,blockquote,pre,td,th,dd,dt,figcaption,div:not(:has(p,div,h1,h2,h3,li,blockquote,pre,table))');
+  const out = []; let cur = { title: fallback, text: '' };
+  const seen = new Set();
+  for (const el of blocks) {
+    if ([...seen].some(s => s.contains(el))) continue; seen.add(el);
+    const t = el.textContent.replace(/\s+/g, ' ').trim(); if (!t) continue;
+    if (/^H[12]$/.test(el.tagName) && cur.text.trim().length > 0) { out.push(chapter(cur.title, cur.text)); cur = { title: t, text: '' }; }
+    else if (/^H[12]$/.test(el.tagName)) cur.title = t;
+    else cur.text += t + '\n\n';
+  }
+  if (!out.length && !cur.text.trim()) cur.text = body.textContent;
+  out.push(chapter(cur.title, cur.text));
+  return out.filter(Boolean);
+}
+const parseHTML = (html, fallback) => splitHtmlDoc(new DOMParser().parseFromString(html, 'text/html'), fallback);
+
+function mdToText(md) {
+  return md.replace(/```[\s\S]*?```/g, '').replace(/!\[[^\]]*\]\([^)]*\)/g, '')
+    .replace(/\[([^\]]+)\]\([^)]*\)/g, '$1').replace(/[*_~`>]+/g, '').replace(/^\s*[-+]\s+/gm, '');
+}
+function rtfToText(rtf) {
+  return rtf.replace(/\\par[d]?/g, '\n\n').replace(/\\'([0-9a-f]{2})/gi, (_, h) => String.fromCharCode(parseInt(h, 16)))
+    .replace(/\\u(-?\d+)\??/g, (_, n) => String.fromCharCode((+n + 65536) % 65536))
+    .replace(/\{\\\*[^{}]*\}/g, '').replace(/\{\\(fonttbl|colortbl|stylesheet|info)[\s\S]*?\}\s*\}/g, '')
+    .replace(/\\[a-z]+-?\d* ?/gi, '').replace(/[{}]/g, '');
+}
+
+// ---------- format readers ----------
+async function readPDF(buf, name) {
+  await loadScript(LIBS.pdf); pdfjsLib.GlobalWorkerOptions.workerSrc = LIBS.pdfWorker;
+  const pdf = await pdfjsLib.getDocument({ data: buf }).promise; const out = [];
+  let outline = null; try { outline = await pdf.getOutline(); } catch {}
+  for (let i = 1; i <= pdf.numPages; i++) {
+    status(`Reading PDF page ${i}/${pdf.numPages}…`);
+    const tc = await (await pdf.getPage(i)).getTextContent(); let t = '', lastY = null;
+    for (const it of tc.items) {
+      const y = it.transform ? it.transform[5] : null;
+      if (lastY !== null && y !== null && Math.abs(y - lastY) > 18) t += '\n\n';
+      t += it.str + (it.hasEOL ? '\n' : ''); lastY = y;
+    }
+    t = t.replace(/-\n(\w)/g, '$1').replace(/([^\n])\n(?!\n)/g, '$1 ');
+    const c = chapter(`Page ${i}`, t); if (c) out.push(c);
+  }
+  if (!out.length) { status('No text layer found — running OCR on PDF pages (slow)…'); return ocrPDF(pdf); }
+  return out;
+}
+async function ocrPDF(pdf) {
+  await loadScript(LIBS.tesseract); const w = await Tesseract.createWorker('eng'); const out = [];
+  try { for (let i = 1; i <= pdf.numPages; i++) {
+    status(`OCR page ${i}/${pdf.numPages}…`);
+    const page = await pdf.getPage(i), vp = page.getViewport({ scale: 2 });
+    const c = document.createElement('canvas'); c.width = vp.width; c.height = vp.height;
+    await page.render({ canvasContext: c.getContext('2d'), viewport: vp }).promise;
+    const { data } = await w.recognize(c); const ch = chapter(`Page ${i}`, data.text); if (ch) out.push(ch);
+  } } finally { await w.terminate(); }
+  return out;
+}
+async function readEPUB(buf, name) {
+  await loadScript(LIBS.jszip); const zip = await JSZip.loadAsync(buf);
+  const xml = s => new DOMParser().parseFromString(s, 'application/xml');
+  const container = xml(await zip.file('META-INF/container.xml').async('string'));
+  const opfPath = container.querySelector('rootfile').getAttribute('full-path');
+  const base = opfPath.includes('/') ? opfPath.slice(0, opfPath.lastIndexOf('/') + 1) : '';
+  const opf = xml(await zip.file(opfPath).async('string'));
+  const title = opf.querySelector('metadata > title, title')?.textContent?.trim();
+  const manifest = {}; opf.querySelectorAll('manifest > item').forEach(i => manifest[i.getAttribute('id')] = i.getAttribute('href'));
+  const out = []; const refs = [...opf.querySelectorAll('spine > itemref')];
+  for (let k = 0; k < refs.length; k++) {
+    const href = manifest[refs[k].getAttribute('idref')]; if (!href) continue;
+    const path = decodeURIComponent(base + href.split('#')[0]); const f = zip.file(path); if (!f) continue;
+    status(`Reading EPUB section ${k + 1}/${refs.length}…`);
+    const doc = new DOMParser().parseFromString(await f.async('string'), 'text/html');
+    const h = doc.querySelector('h1,h2,h3,title')?.textContent?.replace(/\s+/g, ' ').trim();
+    doc.querySelectorAll('script,style').forEach(e => e.remove());
+    const parts = [...doc.body.querySelectorAll('p,h1,h2,h3,h4,li,blockquote,pre,div:not(:has(p,div))')]
+      .map(e => e.textContent.replace(/\s+/g, ' ').trim()).filter(Boolean);
+    const text = (parts.length ? [...new Set(parts)] : [doc.body.textContent]).join('\n\n');
+    const c = chapter(h || `Section ${out.length + 1}`, text); if (c) out.push(c);
+  }
+  return { chapters: out, title };
+}
+async function readDOCX(buf, name) {
+  await loadScript(LIBS.mammoth); const r = await mammoth.convertToHtml({ arrayBuffer: buf });
+  return parseHTML(r.value, name);
+}
+async function readODT(buf, name) {
+  await loadScript(LIBS.jszip); const zip = await JSZip.loadAsync(buf);
+  const doc = new DOMParser().parseFromString(await zip.file('content.xml').async('string'), 'application/xml');
+  const out = []; let cur = { title: name, text: '' };
+  doc.querySelectorAll('h, p').forEach(e => {
+    const t = e.textContent.trim(); if (!t) return;
+    if (e.localName === 'h') { if (cur.text) out.push(chapter(cur.title, cur.text)); cur = { title: t, text: '' }; }
+    else cur.text += t + '\n\n';
+  });
+  out.push(chapter(cur.title, cur.text)); return out.filter(Boolean);
+}
+async function readImage(file, name) {
+  await loadScript(LIBS.tesseract); status('Recognizing text in image (OCR)…');
+  const w = await Tesseract.createWorker('eng');
+  try { const { data } = await w.recognize(file); return splitPlain(data.text, name); } finally { await w.terminate(); }
+}
+
+async function parseFile(file) {
+  const name = file.name.replace(/\.[^.]+$/, ''), ext = (file.name.split('.').pop() || '').toLowerCase();
+  const type = file.type || '';
+  if (ext === 'pdf' || type === 'application/pdf') return { chapters: await readPDF(await file.arrayBuffer(), name) };
+  if (ext === 'epub') return readEPUB(await file.arrayBuffer(), name);
+  if (ext === 'docx') return { chapters: await readDOCX(await file.arrayBuffer(), name) };
+  if (ext === 'odt') return { chapters: await readODT(await file.arrayBuffer(), name) };
+  if (type.startsWith('image/') || /^(png|jpe?g|webp|bmp|gif|tiff?)$/.test(ext)) return { chapters: await readImage(file, name) };
+  const text = await file.text();
+  if (/^(html?|xhtml)$/.test(ext) || /^\s*<(!doctype|html)/i.test(text)) return { chapters: parseHTML(text, name) };
+  if (ext === 'xml') return { chapters: splitPlain(new DOMParser().parseFromString(text, 'application/xml').documentElement.textContent, name) };
+  if (/^(md|markdown)$/.test(ext)) return { chapters: splitPlain(mdToText(text).replace(/^#{1,3} /gm, '# '), name) };
+  if (ext === 'rtf' || text.startsWith('{\\rtf')) return { chapters: splitPlain(rtfToText(text), name) };
+  if (ext === 'json') { try { return { chapters: splitPlain(JSON.stringify(JSON.parse(text), null, 1).replace(/[{}\[\]",]/g, ' ').replace(/[ \t]+/g, ' '), name) }; } catch {} }
+  if (/^(srt|vtt)$/.test(ext)) return { chapters: splitPlain(text.replace(/^(WEBVTT.*|\d+|[\d:.,]+ --> [\d:.,]+.*)$/gm, ''), name) };
+  if (/^(csv|tsv)$/.test(ext)) return { chapters: splitPlain(text.split('\n').map(l => l.split(ext === 'tsv' ? '\t' : ',').join(', ') + '.').join('\n'), name) };
+  if (text.includes('\u0000')) throw new Error('This looks like a binary file with no readable text.');
+  return { chapters: splitPlain(text, name) };
+}
+
+async function openFile(file) {
+  stop(); status(`Opening ${file.name}…`);
+  try {
+    const r = await parseFile(file);
+    if (!r.chapters || !r.chapters.length) throw new Error('No readable text found in this file.');
+    const id = `${file.name}|${file.size}|${file.lastModified || 0}`;
+    const prev = await db.get(id);
+    await loadBook({ id, name: r.title || file.name.replace(/\.[^.]+$/, ''), chapters: r.chapters, ch: prev?.ch || 0, si: prev?.si || 0, updated: Date.now() });
+    status(prev ? 'Resumed where you left off.' : `Loaded ${r.chapters.length} section(s). Press Play.`);
+  } catch (e) { console.error(e); status('Error: ' + e.message); }
+}
+
+async function loadBook(b) {
+  book = b; flat = b.chapters.map(c => c.paras.flat());
+  ch = Math.min(b.ch || 0, flat.length - 1); si = Math.min(b.si || 0, flat[ch].length - 1);
+  $('title').textContent = b.name; document.title = b.name + ' — Audiobook Reader';
+  $('drop').classList.add('hide'); await db.put(b); renderTOC(); renderChapter(); renderLib();
+}
+
+// ---------- rendering ----------
+function renderTOC() {
+  $('toc').innerHTML = '';
+  book.chapters.forEach((c, i) => {
+    const li = document.createElement('li'); li.innerHTML = '<span class="t"></span>';
+    li.firstChild.textContent = c.title; li.title = c.title;
+    li.onclick = () => jump(i, 0, playing); if (i === ch) li.classList.add('active');
+    $('toc').appendChild(li);
+  });
+}
+async function renderLib() {
+  const all = (await db.all() || []).sort((a, b) => b.updated - a.updated);
+  $('lib').innerHTML = all.length ? '' : '<li style="cursor:default;color:var(--muted)">Opened books appear here</li>';
+  for (const b of all) {
+    const li = document.createElement('li'); if (book && b.id === book.id) li.classList.add('active');
+    const pct = Math.round(100 * (b.ch + 1) / b.chapters.length);
+    li.innerHTML = '<span class="t"></span><small></small><button class="x" title="Remove">✕</button>';
+    li.querySelector('.t').textContent = b.name; li.querySelector('small').textContent = pct + '%';
+    li.onclick = e => { if (e.target.classList.contains('x')) return; stop(); loadBook(b); };
+    li.querySelector('.x').onclick = async () => { await db.del(b.id); if (book && book.id === b.id) location.reload(); else renderLib(); };
+    $('lib').appendChild(li);
+  }
+}
+function renderChapter() {
+  const c = book.chapters[ch]; $('chTitle').textContent = c.title; const box = $('text'); box.innerHTML = '';
+  let k = 0; const frag = document.createDocumentFragment();
+  for (const p of c.paras) {
+    const pe = document.createElement('p');
+    for (const s of p) { const sp = document.createElement('span'); sp.className = 's'; sp.dataset.i = k++; sp.textContent = s + ' '; pe.appendChild(sp); }
+    frag.appendChild(pe);
+  }
+  box.appendChild(frag);
+  [...$('toc').children].forEach((li, i) => li.classList.toggle('active', i === ch));
+  $('seek').max = Math.max(0, flat[ch].length - 1); highlight(true);
+}
+function highlight(scroll) {
+  const spans = $('text').children.length ? $('text').querySelectorAll('.s') : [];
+  spans.forEach(s => { const i = +s.dataset.i; s.classList.toggle('cur', i === si); s.classList.toggle('done', i < si); });
+  const cur = spans[si]; if (cur && scroll) cur.scrollIntoView({ block: 'center', behavior: 'smooth' });
+  $('seek').value = si; $('pos').textContent = `Ch ${ch + 1}/${flat.length} · ${si + 1}/${flat[ch].length}`;
+  // rough ETA: ~15 chars/sec at 1x
+  const rem = flat.slice(ch).reduce((n, arr, j) => n + arr.slice(j ? 0 : si).join(' ').length, 0) / (15 * +$('rate').value);
+  $('eta').textContent = rem > 3600 ? `${(rem / 3600).toFixed(1)}h left` : `${Math.ceil(rem / 60)}m left`;
+}
+let saveT; function save() { clearTimeout(saveT); saveT = setTimeout(() => { if (book) { book.ch = ch; book.si = si; book.updated = Date.now(); db.put(book); } }, 400); }
+
+// ---------- speech ----------
+let voices = [];
+function loadVoices() {
+  voices = synth.getVoices().slice().sort((a, b) => (b.lang.startsWith((navigator.language || 'en').slice(0, 2)) - a.lang.startsWith((navigator.language || 'en').slice(0, 2))) || a.name.localeCompare(b.name));
+  const sel = $('voice'), saved = prefs.get('voice', ''); sel.innerHTML = '';
+  voices.forEach((v, i) => { const o = new Option(`${v.name} (${v.lang})${v.localService ? '' : ' ☁'}`, v.voiceURI); sel.add(o); });
+  if (saved && voices.some(v => v.voiceURI === saved)) sel.value = saved;
+  else { const best = voices.find(v => /natural|neural|premium|enhanced|google/i.test(v.name) && v.lang.startsWith('en')); if (best) sel.value = best.voiceURI; }
+}
+function speakCurrent() {
+  if (!book) return; const my = ++token;
+  if (si >= flat[ch].length) {
+    if (sleepEndCh) { sleepEndCh = false; $('sleep').value = '0'; return pause('Sleep timer: stopped at end of chapter.'); }
+    if (ch + 1 >= flat.length) { pause('Finished. 🎉'); return; }
+    ch++; si = 0; renderChapter();
+  }
+  if (sleepAt && Date.now() >= sleepAt) { sleepAt = 0; $('sleep').value = '0'; return pause('Sleep timer ended.'); }
+  highlight(true); save();
+  const u = new SpeechSynthesisUtterance(flat[ch][si]);
+  const v = voices.find(v => v.voiceURI === $('voice').value); if (v) { u.voice = v; u.lang = v.lang; }
+  u.rate = +$('rate').value; u.pitch = +$('pitch').value;
+  u.onend = () => { if (my !== token || !playing) return; si++; speakCurrent(); };
+  u.onerror = e => { if (my !== token || !playing || e.error === 'interrupted' || e.error === 'canceled') return; si++; speakCurrent(); };
+  synth.speak(u);
+}
+function play() {
+  if (!book) { $('file').click(); return; }
+  if (!synth) return status('Speech synthesis is not supported in this browser.');
+  playing = true; $('play').textContent = '⏸'; synth.cancel(); speakCurrent(); status(''); mediaSession();
+}
+function pause(msg) { playing = false; token++; synth.cancel(); $('play').textContent = '▶'; if (msg) status(msg); }
+function stop() { pause(); }
+function jump(c, s, resume = playing) {
+  if (!book) return; token++; synth.cancel();
+  const changed = c !== ch; ch = Math.max(0, Math.min(c, flat.length - 1)); si = Math.max(0, Math.min(s, flat[ch].length - 1));
+  if (changed) renderChapter(); else highlight(true); save();
+  if (resume) { playing = true; $('play').textContent = '⏸'; speakCurrent(); }
+}
+function step(d) {
+  if (!book) return; let c = ch, s = si + d;
+  if (s < 0) { if (c > 0) { c--; s = flat[c].length - 1; } else s = 0; }
+  else if (s >= flat[c].length) { if (c + 1 < flat.length) { c++; s = 0; } else s = flat[c].length - 1; }
+  jump(c, s);
+}
+// Chrome pauses long-running synthesis; keep it alive
+setInterval(() => { if (playing && synth.speaking && !synth.paused) { synth.pause(); synth.resume(); } }, 10000);
+
+function mediaSession() {
+  if (!('mediaSession' in navigator) || !book) return;
+  navigator.mediaSession.metadata = new MediaMetadata({ title: book.chapters[ch].title, artist: book.name, album: 'Audiobook Reader' });
+  const h = { play, pause: () => pause(), previoustrack: () => jump(ch - 1, 0), nexttrack: () => jump(ch + 1, 0), seekbackward: () => step(-1), seekforward: () => step(1) };
+  for (const [k, f] of Object.entries(h)) try { navigator.mediaSession.setActionHandler(k, f); } catch {}
+}
+
+// ---------- UI wiring ----------
+$('openBtn').onclick = $('openBtn2').onclick = () => $('file').click();
+$('file').onchange = e => { const f = e.target.files[0]; if (f) openFile(f); e.target.value = ''; };
+$('pasteBtn').onclick = async () => {
+  let t = ''; try { t = await navigator.clipboard.readText(); } catch {}
+  if (!t) t = prompt('Paste the text to read:') || ''; if (!t.trim()) return;
+  stop(); await loadBook({ id: 'paste|' + Date.now(), name: t.trim().slice(0, 40).replace(/\s+/g, ' ') + '…', chapters: splitPlain(t, 'Pasted text'), ch: 0, si: 0, updated: Date.now() });
+};
+$('play').onclick = () => playing ? pause() : play();
+$('back').onclick = () => step(-1); $('fwd').onclick = () => step(1);
+$('prevCh').onclick = () => jump(si > 2 ? ch : ch - 1, 0); $('nextCh').onclick = () => jump(ch + 1, 0);
+$('seek').oninput = e => jump(ch, +e.target.value);
+$('text').onclick = e => { const s = e.target.closest('.s'); if (s) jump(ch, +s.dataset.i, true); };
+$('voice').onchange = e => { prefs.set('voice', e.target.value); if (playing) jump(ch, si); };
+$('rate').oninput = e => { $('rateV').textContent = (+e.target.value).toFixed(1) + '×'; prefs.set('rate', e.target.value); };
+$('rate').onchange = () => { if (playing) jump(ch, si); };
+$('pitch').onchange = e => { prefs.set('pitch', e.target.value); if (playing) jump(ch, si); };
+$('fs').oninput = e => { document.documentElement.style.setProperty('--fs', e.target.value + 'px'); prefs.set('fs', e.target.value); };
+$('sleep').onchange = e => { const v = e.target.value; sleepEndCh = v === 'ch'; sleepAt = (v !== 'ch' && +v) ? Date.now() + v * 60000 : 0; status(v === '0' ? 'Sleep timer off.' : 'Sleep timer set.'); };
+$('themeBtn').onclick = () => { const r = document.documentElement, dark = getComputedStyle(r).getPropertyValue('--bg').trim() === '#121314'; r.dataset.theme = dark ? 'light' : 'dark'; prefs.set('theme', r.dataset.theme); };
+$('tocToggle').onclick = () => $('side').classList.toggle('hide');
+
+const drop = $('drop');
+['dragenter', 'dragover'].forEach(t => document.addEventListener(t, e => { e.preventDefault(); drop.classList.add('over'); }));
+['dragleave', 'drop'].forEach(t => document.addEventListener(t, e => { e.preventDefault(); drop.classList.remove('over'); }));
+document.addEventListener('drop', e => { const f = e.dataTransfer.files[0]; if (f) openFile(f); });
+
+document.addEventListener('keydown', e => {
+  if (/INPUT|SELECT|TEXTAREA/.test(e.target.tagName) && e.target.type !== 'range') return;
+  if (e.code === 'Space') { e.preventDefault(); playing ? pause() : play(); }
+  else if (e.key === 'ArrowLeft') { e.preventDefault(); e.shiftKey ? jump(ch - 1, 0) : step(-1); }
+  else if (e.key === 'ArrowRight') { e.preventDefault(); e.shiftKey ? jump(ch + 1, 0) : step(1); }
+});
+window.addEventListener('beforeunload', () => synth && synth.cancel());
+
+// restore prefs
+$('rate').value = prefs.get('rate', 1); $('rateV').textContent = (+$('rate').value).toFixed(1) + '×';
+$('pitch').value = prefs.get('pitch', 1); $('fs').value = prefs.get('fs', 20);
+document.documentElement.style.setProperty('--fs', $('fs').value + 'px');
+const th = prefs.get('theme', null); if (th) document.documentElement.dataset.theme = th;
+if (synth) { loadVoices(); synth.onvoiceschanged = loadVoices; } else status('This browser has no text-to-speech support.');
+if (window.innerWidth <= 760) $('side').classList.add('hide');
+renderLib();
+})();
+</script>
+</body>
+</html>
