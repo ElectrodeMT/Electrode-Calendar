@@ -258,14 +258,14 @@ add('Characters', '28. Dialogue: speakers, pronouns, turn-taking, whispers; cons
     for (let s = 0; s < n; s++) { const ps = __abr.parts(0, s); ps.forEach((x, i) => x.who && rows.push({ s, t: x.t, who: x.who, act: x.act, v: __abr.partVoice(0, s, i).voice })); }
     return { rows, cast: __abr.cast }; });
   const by = t => r.rows.find(x => x.t.includes(t)) || {};
-  const want = [['Where are you going', 'his wife'], ['To seek my fortune', 'arthur'], ['Take an umbrella', 'his wife'], ['do be careful', 'mrs. pennywhistle'], ['I always am', 'arthur'], ['You never are', 'mrs. pennywhistle'], ['Another fool', 'the old captain']];
+  const want = [['Where are you going', 'mrs. pennywhistle'], ['To seek my fortune', 'arthur'], ['Take an umbrella', 'mrs. pennywhistle'], ['do be careful', 'mrs. pennywhistle'], ['I always am', 'arthur'], ['You never are', 'mrs. pennywhistle'], ['Another fool', 'the old captain']];
   for (const [t, w] of want) assert(by(t).who === w, `"${t}" spoken by ${by(t).who}, expected ${w}`);
   assert(by('do be careful').act && by('do be careful').act.gain < 0, 'whisper not softer');
   assert(by('To seek').v === by('I always am').v && by('To seek').v !== by('Take an umbrella').v, 'character voices not consistent/distinct');
   assert(/raconteur/.test(by('To seek').v), 'character voice should be a shade of the narrator: ' + by('To seek').v);
   assert(r.cast['the old captain'].voice === 'm2', 'old captain should get the older voice, got ' + r.cast['the old captain'].voice);
-  await p.click('#audioBtn'); const names = await p.$$eval('#castList li .t', l => l.map(x => x.textContent)); assert(names.length === 4, 'cast list ' + names.join('|'));
-  await p.selectOption('#castList li:has-text("Arthur") select', 'm3'); await p.keyboard.press('Escape');
+  await p.click('#audioBtn'); const names = await p.$$eval('#castList li .t', l => l.map(x => x.textContent)); assert(names.length === 3, 'cast list ' + names.join('|'));
+  await castSet(p, 'Arthur', 0, 'm3'); await p.keyboard.press('Escape');
   const v2 = await p.evaluate(() => { const n = document.querySelectorAll('#text .s').length; for (let s = 0; s < n; s++) { const ps = __abr.parts(0, s); const i = ps.findIndex(x => x.who === 'arthur'); if (i >= 0) return __abr.partVoice(0, s, i).voice; } });
   assert(/am_adam/.test(v2), 'cast change not applied: ' + v2);
   await testEngine(p); await p.click('#play'); await p.waitForFunction(() => /Finished/.test(document.getElementById('status').textContent), null, { timeout: 30000 });
@@ -274,8 +274,29 @@ add('Characters', '28. Dialogue: speakers, pronouns, turn-taking, whispers; cons
   return `${r.rows.length} character lines, 4 characters, export ${(fs.statSync(await d.path()).size / 48000).toFixed(1)}s`;
 });
 
+add('Characters', '29. Dash/«» dialogue, action beats, name linking, "same person" control, ElevenLabs character voices', async p => {
+  await mockEleven(p); await open(p, 'dialogue2.txt'); await p.selectOption('#engine', 'kokoro'); await p.waitForTimeout(200);
+  const who = await p.evaluate(() => { const n = document.querySelectorAll('#text .s').length, m = {};
+    for (let s = 0; s < n; s++) __abr.parts(0, s).forEach(x => { if (x.who) m[x.t.slice(0, 18)] = x.who; }); return { m, cast: Object.keys(__abr.cast) }; });
+  const W = [['Are you coming bac', 'mrs. pennywhistle'], ['Of course,', 'arthur'], ['«Good luck,»', 'mrs. pennywhistle'], ['"Fine.', 'arthur'], ['"Mr. Pennywhistle!', 'the old captain'], ['"Where are you goi', 'mrs. pennywhistle']];
+  for (const [t, w] of W) assert(who.m[t] === w, `"${t}" → ${who.m[t]}, expected ${w}. All: ${JSON.stringify(who.m)}`);
+  assert(who.cast.length === 3, 'cast: ' + who.cast.join('|'));
+  await p.click('#audioBtn'); await castSet(p, 'The old captain', 1, 'arthur'); await p.waitForTimeout(200);
+  const after = await p.evaluate(() => Object.keys(__abr.cast)); assert(after.length === 2 && !after.includes('the old captain'), 'merge failed: ' + after.join('|'));
+  await p.evaluate(() => { localStorage.clear(); }); await p.keyboard.press('Escape');
+  await setKey(p, 'good-key'); await p.waitForFunction(() => document.getElementById('engine').value === 'eleven', null, { timeout: 10000 }); await p.keyboard.press('Escape');
+  const ev = await p.evaluate(() => { const n = document.querySelectorAll('#text .s').length, m = {}; for (let s = 0; s < n; s++) __abr.parts(0, s).forEach((x, i) => { if (x.who) m[x.who] = __abr.partVoice(0, s, i).voice; }); return m; });
+  assert(ev['arthur'] === 'bbb' && ev['mrs. pennywhistle'] === 'aaa', 'ElevenLabs character voices: ' + JSON.stringify(ev));
+  return `dash/«»/action beats ok; merge ok; ElevenLabs voices ${JSON.stringify(ev)}`;
+});
+
 // ---------- ElevenLabs (mocked API: no real credits used) ----------
 function wavBuf(n, sr = 44100) { const b = Buffer.alloc(44 + n * 2); b.write('RIFF', 0); b.writeUInt32LE(36 + n * 2, 4); b.write('WAVEfmt ', 8); b.writeUInt32LE(16, 16); b.writeUInt16LE(1, 20); b.writeUInt16LE(1, 22); b.writeUInt32LE(sr, 24); b.writeUInt32LE(sr * 2, 28); b.writeUInt16LE(2, 32); b.writeUInt16LE(16, 34); b.write('data', 36); b.writeUInt32LE(n * 2, 40); return b; }
+async function castSet(p, name, idx, value) { // pick a cast row by its exact name label, then set its n-th menu
+  const ok = await p.evaluate(([name, idx, value]) => { const li = [...document.querySelectorAll('#castList li')].find(l => l.querySelector('.t').textContent.split(' · ')[0] === name); if (!li) return false;
+    const sel = li.querySelectorAll('select')[idx]; sel.value = value; sel.dispatchEvent(new Event('change')); return true; }, [name, idx, value]);
+  if (!ok) throw new Error('cast row not found: ' + name);
+}
 async function mockEleven(p, mode = {}) {
   p.el = { tts: 0, calls: [] }; const H = { 'access-control-allow-origin': '*', 'access-control-allow-headers': '*' };
   await p.route('https://api.elevenlabs.io/**', async route => {
@@ -283,7 +304,7 @@ async function mockEleven(p, mode = {}) {
     if (route.request().method() === 'OPTIONS') return route.fulfill({ status: 200, headers: { ...H, 'access-control-allow-methods': '*' } });
     if (route.request().headers()['xi-api-key'] !== 'good-key') return route.fulfill({ status: 401, headers: H, contentType: 'application/json', body: JSON.stringify({ detail: { status: 'invalid_api_key', message: 'Invalid API key' } }) });
     if (u.pathname === '/v1/user/subscription') return route.fulfill({ headers: H, contentType: 'application/json', body: JSON.stringify({ tier: 'free', character_count: 1200, character_limit: 10000 }) });
-    if (u.pathname === '/v1/voices') return route.fulfill({ headers: H, contentType: 'application/json', body: JSON.stringify({ voices: [{ voice_id: 'aaa', name: 'Aria', category: 'premade' }, { voice_id: 'JBFqnCBsd6RMkjVDRZzb', name: 'George', category: 'premade', preview_url: 'https://api.elevenlabs.io/preview.wav' }] }) });
+    if (u.pathname === '/v1/voices') return route.fulfill({ headers: H, contentType: 'application/json', body: JSON.stringify({ voices: [{ voice_id: 'aaa', name: 'Aria', category: 'premade', labels: { gender: 'female' } }, { voice_id: 'bbb', name: 'Brian', category: 'premade', labels: { gender: 'male' } }, { voice_id: 'JBFqnCBsd6RMkjVDRZzb', name: 'George', category: 'premade', preview_url: 'https://api.elevenlabs.io/preview.wav' }] }) });
     if (u.pathname === '/preview.wav') return route.fulfill({ headers: H, contentType: 'audio/wav', body: wavBuf(4410) });
     if (u.pathname === '/v1/models') return route.fulfill({ headers: H, contentType: 'application/json', body: JSON.stringify([{ model_id: 'eleven_multilingual_v2', name: 'Eleven Multilingual v2', can_do_text_to_speech: true }, { model_id: 'eleven_flash_v2_5', name: 'Eleven Flash v2.5', can_do_text_to_speech: true }]) });
     if (u.pathname.startsWith('/v1/text-to-speech/')) {

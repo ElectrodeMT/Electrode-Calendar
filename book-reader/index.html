@@ -145,6 +145,7 @@ dialog p{margin:6px 0;font-size:14px;color:var(--muted)}
   <h4>Characters in this book</h4>
   <p id="castHint">With Kokoro voices, the narrator gives each character a consistent shade of voice. Change any that were guessed wrong.</p>
   <ul class="list" id="castList" style="padding:0"></ul>
+  <div class="r hide" id="piperCharsRow"><label class="opt"><input type="checkbox" id="piperChars"> Give characters their own Piper voices (downloads up to 8 extra voices, about 60 MB each, once)</label></div>
   <h4>Speed & hardware</h4>
   <div class="r"><label class="opt"><input type="checkbox" id="gpu"> Use the GPU for Kokoro (much faster, but a 326 MB download instead of 92 MB)</label></div>
   <p id="diag"></p>
@@ -195,7 +196,7 @@ self.fetch = async (input, init) => {
   return new Response(out.slice().buffer, { status: 200, headers: { 'Content-Type': 'application/octet-stream' } });
 };
 function allowBlends(k) { const orig = k._validate_voice.bind(k); k._validate_voice = v => BLENDS[v] || isMix(v) ? v[0] : orig(v); return k; }
-let kokoro = null, kokoroP = null, kokoroDevice = '', piperMod = null, piperSess = null, piperVoice = '', piperP = null;
+let kokoro = null, kokoroP = null, kokoroDevice = '', piperMod = null;
 const queue = []; let running = false, seq = 0;
 const post = (m, t) => self.postMessage(m, t || []);
 
@@ -218,14 +219,14 @@ function getKokoro(gpu) {
   })().catch(e => { kokoroP = null; throw e; });
 }
 async function piperModule() { return piperMod ||= await import(PIPER_URL); }
+const piperSessions = new Map(); // narrator + character voices stay loaded
 async function getPiper(voice) {
-  if (piperSess && piperVoice === voice) return piperSess;
-  if (piperP && piperP.voice === voice) return piperP.p;
+  if (piperSessions.has(voice)) return piperSessions.get(voice);
   const mod = await piperModule();
   const p = mod.TtsSession.create({ voiceId: voice, wasmPaths: PIPER_PATHS,
-    progress: x => { if (x.url !== mod.INFERENCE_PROGRESS_URL && x.total) post({ type: 'progress', engine: 'piper', loaded: x.loaded, total: x.total }); } })
-    .then(s => { piperSess = s; piperVoice = voice; return s; });
-  piperP = { voice, p }; p.catch(() => { if (piperP && piperP.p === p) piperP = null; });
+    progress: x => { if (x.url !== mod.INFERENCE_PROGRESS_URL && x.total) post({ type: 'progress', engine: 'piper', loaded: x.loaded, total: x.total }); } });
+  piperSessions.set(voice, p); p.catch(() => piperSessions.delete(voice));
+  while (piperSessions.size > 5) piperSessions.delete(piperSessions.keys().next().value);
   return p;
 }
 function wavToPcm(buf) {
@@ -278,7 +279,7 @@ self.onmessage = async ({ data: m }) => {
     }
     else if (m.type === 'flush') {
       try { await (await piperModule()).flush(); } catch {}
-      kokoro = null; kokoroP = null; piperSess = null; piperP = null; piperVoice = '';
+      kokoro = null; kokoroP = null; piperSessions.clear();
       post({ type: 'ok', id: m.id });
     }
   } catch (e) { post({ type: 'error', id: m.id, message: String((e && e.message) || e) }); }
@@ -767,19 +768,60 @@ function findSpeaker(narr) {
   if (NOT_NAMES.has(who.toLowerCase()) && !/^(he|she)$/i.test(who)) return null;
   return { who, verb };
 }
+function quoteSpans(P) {
+  const spans = []; let m;
+  if (/^\s*[—–―]/.test(P)) { // dash dialogue: "— Where are you going? — asked his wife. — Out."
+    const cuts = []; const re = /(^\s*|\s)[—–―]\s?/g; while ((m = re.exec(P))) cuts.push([m.index, m.index + m[0].length]);
+    cuts.forEach(([, st], i) => { const en = i + 1 < cuts.length ? cuts[i + 1][0] : P.length, seg = P.slice(st, en);
+      const narr = i > 0 && (/^\s*\p{Ll}/u.test(seg) || new RegExp(`^\\s*(?:${SPEECH_VERBS})\\b`, 'i').test(seg));
+      if (!narr && /[\p{L}\p{N}]/u.test(seg)) spans.push([st, en]); });
+    return spans;
+  }
+  const re = /“[^”]*”?|"[^"]*"?|«[^»]*»?|„[^“”]*[“”]?|‘(?=\S)[^’]*’(?=[\s,.;:!?—–-]|$)/g;
+  while ((m = re.exec(P))) if (/[\p{L}\p{N}]/u.test(m[0])) spans.push([m.index, m.index + m[0].length]);
+  return spans;
+}
 function analyzeDialogue() {
-  dlg = []; cast = new Map(); const saved = book ? prefs.get('cast.' + book.id, {}) : {};
-  let lastF = null, lastM = null, prev = [], quoteRe = /“[^”]*”?|"[^"]*"?|‘(?=\S)[^’]*’(?=[\s,.;:!?—–-]|$)/g;
-  const note = (key, name, g) => { if (!cast.has(key)) cast.set(key, { name, gender: g, lines: 0 }); const r = cast.get(key); r.lines++; if (!r.gender && g) r.gender = g; return key; };
+  dlg = []; cast = new Map(); if (!book) return;
+  const saved = prefs.get('cast.' + book.id, {}), alias = prefs.get('alias.' + book.id, {});
+  // 1) learn full names from the whole book ("Arthur Pennywhistle") so titles, surnames and "his wife" can be linked
+  const surnameOf = {}, firstsBySurname = {};
+  for (const chp of book.chapters) for (const para of chp.paras) for (const mm of para.join(' ').matchAll(/\b([A-Z][a-z]+)(?= ([A-Z][a-z]{2,})\b)/g)) { // lookahead: 'And Arthur Pennywhistle' still finds 'Arthur Pennywhistle'
+    const f = mm[1].toLowerCase(), g = FEMALE_NAMES.has(f) ? 'f' : MALE_NAMES.has(f) ? 'm' : ''; if (!g || NOT_NAMES.has(mm[2].toLowerCase())) continue;
+    surnameOf[f] = mm[2]; (firstsBySurname[mm[2].toLowerCase()] ||= new Map()).set(f, g);
+  }
+  const cap = x => x.replace(/^./, c => c.toUpperCase());
+  let lastF = null, lastM = null, namedF = null, namedM = null, prev = [];
+  function canon(name, g) { // -> { key, name, g }
+    let n = name.trim().replace(/\s+/g, ' '), low = n.toLowerCase();
+    const first = w => (w || '').split(' ')[0].toLowerCase();
+    if (/^his wife$/.test(low) && namedM) { const sn = surnameOf[first(namedM)]; return sn ? canon('Mrs. ' + sn, 'f') : { key: first(namedM) + "'s wife", name: cap(namedM.split(' ')[0]) + "'s wife", g: 'f' }; }
+    if (/^her husband$/.test(low) && namedF) { const sn = surnameOf[first(namedF)]; return sn ? canon('Mr. ' + sn, 'm') : { key: first(namedF) + "'s husband", name: cap(namedF.split(' ')[0]) + "'s husband", g: 'm' }; }
+    let t = n.match(/^(Mr|Mrs|Ms|Miss|Sir|Lord|Lady|Dr|Captain|Professor)\.? ([A-Z][\p{L}'’-]+)$/u);
+    if (t) {
+      const tg = /^(Mrs|Ms|Miss|Lady)$/.test(t[1]) ? 'f' : /^(Mr|Sir|Lord)$/.test(t[1]) ? 'm' : g, fam = firstsBySurname[t[2].toLowerCase()];
+      const same = fam ? [...fam].filter(([, gg]) => gg === tg) : []; if (same.length === 1) return { key: same[0][0], name: cap(same[0][0]), g: tg };
+      return { key: `${t[1].toLowerCase()}. ${t[2].toLowerCase()}`.replace('..', '.'), name: `${t[1]}. ${t[2]}`.replace('..', '.'), g: tg || g };
+    }
+    t = n.match(/^([A-Z][a-z]+) [A-Z][a-z]{2,}$/); if (t && (FEMALE_NAMES.has(t[1].toLowerCase()) || MALE_NAMES.has(t[1].toLowerCase()))) return { key: t[1].toLowerCase(), name: t[1], g: genderOf(t[1]) || g };
+    return { key: low.replace(/^(the|his|her|my) /, '$1 '), name: cap(n), g };
+  }
+  const note = (c0) => { let key = c0.key, hops = 0; while (alias[key] && hops++ < 5) key = alias[key];
+    if (!cast.has(key)) cast.set(key, { name: key === c0.key ? c0.name : cap(key), gender: c0.g, lines: 0 }); const r = cast.get(key); r.lines++; if (!r.gender && c0.g) r.gender = c0.g; return key; };
+  const knownSubject = narr => { // action beat: "Arthur grinned." / "The old captain looked up."
+    const m = narr.match(/(?:^|[.!?]\s+|\|\s*)((?:(?:Mr|Mrs|Ms|Miss|Dr|Sir|Lady|Lord|Captain)\.? )?[A-Z][a-z]+(?: [A-Z][a-z]+)?|[Tt]he (?:[a-z]+ ){0,2}?(?:man|woman|girl|boy|captain|king|queen|old man|old woman|stranger|soldier|guard|doctor|lady|gentleman)|He|She)\s+[a-z]+(?:ed|s)\b/);
+    if (!m || NOT_NAMES.has(m[1].toLowerCase()) && !/^(he|she)$/i.test(m[1])) return null;
+    const w = m[1]; if (/^(he|she)$/i.test(w)) return { who: w, verb: '' };
+    return genderOf(w) || cast.has(canon(w, '').key) || /^(Mr|Mrs|Ms|Miss|Dr|Sir|Lady|Lord|Captain)/.test(w) ? { who: w, verb: '' } : null;
+  };
   book.chapters.forEach((chp, c) => {
     dlg[c] = [];
     for (const para of chp.paras) {
-      const P = para.join(' '), spans = []; let m; quoteRe.lastIndex = 0;
-      while ((m = quoteRe.exec(P))) if (/[\p{L}\p{N}]/u.test(m[0])) spans.push([m.index, m.index + m[0].length]);
+      const P = para.join(' '), spans = quoteSpans(P);
       let who = '', act = null;
       if (spans.length) {
-        let narr = ''; let k = 0; for (const [a, b] of spans) { narr += P.slice(k, a) + ' | '; k = b; } narr += P.slice(k);
-        const sp = findSpeaker(narr);
+        let narr = '', k = 0; for (const [a, b] of spans) { narr += P.slice(k, a) + ' | '; k = b; } narr += P.slice(k);
+        const sp = findSpeaker(narr) || knownSubject(narr);
         if (sp) {
           let name = sp.who, g = genderOf(name);
           if (/^(he|she)$/i.test(name)) { // a pronoun: prefer someone just mentioned in this paragraph, else the last speaker of that gender
@@ -787,19 +829,16 @@ function analyzeDialogue() {
             for (const mm of before.matchAll(/\b(?:[Tt]he|[Aa]n?|[Hh]is|[Hh]er)\s+((?:[a-z]+\s+){0,2}?(?:wife|mother|mum|mom|girl|woman|lady|queen|princess|sister|aunt|daughter|grandmother|granny|duchess|nurse|witch|maid|widow|husband|father|dad|boy|man|gentleman|king|prince|brother|uncle|son|grandfather|duke|lord|wizard|monk|priest|captain|stranger|soldier|guard|doctor|teacher|farmer|sailor|driver|innkeeper))\b|\b((?:(?:Mr|Mrs|Ms|Dr|Miss|Sir|Lady|Lord)\.? )?[A-Z][\p{L}'’-]+(?: [A-Z][\p{L}'’-]+)?)/gu)) {
               const np = mm[1] ? 'the ' + mm[1] : mm[2]; if (mm[2] && NOT_NAMES.has(mm[2].toLowerCase())) continue; if (genderOf(np) === g) cands.push(np);
             }
-            name = cands.length ? cands[cands.length - 1] : (g === 'm' ? lastM : lastF) || name;
+            name = cands.length ? cands[cands.length - 1] : (g === 'm' ? lastM : lastF) || (g === 'f' ? 'a woman' : 'a man');
           }
-          if (/^(he|she)$/i.test(name)) name = g === 'f' ? 'a woman' : 'a man';
-          const key = name.toLowerCase().replace(/^(the|his|her|my) /, '$1 ');
-          who = note(key, name.replace(/^./, x => x.toUpperCase()), g);
-          if (g === 'f') lastF = name; else if (g === 'm') lastM = name;
+          const cn = canon(name, g || genderOf(name)); who = note(cn);
+          const gg = cast.get(who).gender, disp = cast.get(who).name; if (gg === 'f') lastF = disp; else if (gg === 'm') lastM = disp;
           for (const [re, a] of VOICE_ACTS) if (re.test(sp.verb)) { act = a; break; }
         } else if (prev.length >= 2 && prev[0] && prev[1] && prev[0] !== prev[1]) { who = prev[1]; cast.get(who).lines++; } // conversation turn-taking
-        else who = note('someone', 'Someone', '');
+        else who = note({ key: 'someone', name: 'Someone', g: '' });
       }
-      prev = [who || '', prev[0] || ''].filter((x, i) => i < 2);
-      if (!spans.length) prev = [];
-      // split each sentence of this paragraph into narrator / character parts
+      prev = spans.length ? [who, prev[0] || ''] : [];
+      for (const mm of P.matchAll(/\b([A-Z][a-z]+)\b/g)) { const w = mm[1].toLowerCase(); if (MALE_NAMES.has(w)) namedM = lastM = mm[1]; else if (FEMALE_NAMES.has(w)) namedF = lastF = mm[1]; } // people mentioned
       let off = 0;
       for (const sen of para) {
         const a0 = off, b0 = off + sen.length, parts = []; let cur = a0;
@@ -807,15 +846,14 @@ function analyzeDialogue() {
           if (b <= a0 || a >= b0) continue;
           const qa = Math.max(a, a0), qb = Math.min(b, b0);
           if (qa > cur) parts.push({ t: P.slice(cur, qa), who: '' });
-          parts.push({ t: P.slice(qa, qb), who, act }); cur = qb;
+          parts.push({ t: P.slice(qa, qb).replace(/^\s*[—–―]\s?/, ''), who, act }); cur = qb;
         }
-        if (cur < b0) parts.push({ t: P.slice(cur, b0), who: '' });
+        if (cur < b0) parts.push({ t: P.slice(cur, b0).replace(/^\s*[—–―]\s?/, ''), who: '' });
         dlg[c].push(parts.map(x => ({ ...x, t: x.t.trim() })).filter(x => /[\p{L}\p{N}]/u.test(x.t)));
         off = b0 + 1;
       }
     }
   });
-  // stable voice assignment: by gender, in order of how much each character speaks
   const used = new Set(), AGE = { m: { old: 'm2', young: 'm1' }, f: { old: 'f3', young: 'f2' }, n: { old: 'n1', young: 'n2' } };
   [...cast.entries()].sort((a, b) => b[1].lines - a[1].lines).forEach(([k, r]) => {
     const g = r.gender || 'n', age = /\b(old|elderly|aged|grand\w*|granny|ancient)\b/i.test(r.name) ? 'old' : /\b(young|little|boy|girl|kid|child|lad|lass)\b/i.test(r.name) ? 'young' : '';
@@ -832,13 +870,31 @@ const CHAR_STYLES = { // shades of the narrator: [other style, share of it, spee
   n0: ['am_michael', 0.3, 1.0, 'Neutral'], n1: ['bm_lewis', 0.3, 0.97, 'Neutral, older'], n2: ['am_puck', 0.3, 1.03, 'Neutral, lighter'], n3: ['bf_emma', 0.3, 1.0, 'Neutral, softer'],
   narrator: [null, 0, 1, 'Narrator (no change)']
 };
+const PIPER_CHARS = { m: ['en_US-ryan-medium', 'en_GB-alan-medium', 'en_US-joe-medium', 'en_GB-northern_english_male-medium'], f: ['en_US-amy-medium', 'en_GB-jenny_dioco-medium', 'en_US-kristin-medium', 'en_GB-alba-medium'] };
+const elGender = x => { const l = x.labels || {}, g = String(l.gender || l.Gender || '').toLowerCase(); return g.startsWith('f') ? 'f' : g.startsWith('m') ? 'm' : ''; };
+function elCharVoice(key, r, narr) { // a different ElevenLabs voice from the user's account for each character
+  const pick = prefs.get('castel.' + (book && book.id), {})[key]; if (pick) return pick;
+  const pool = (EL.voices || []).filter(x => x.voice_id !== narr).sort((a, b) => (a.category === 'premade' ? 0 : 1) - (b.category === 'premade' ? 0 : 1) || a.name.localeCompare(b.name));
+  const same = pool.filter(x => elGender(x) === (r.gender || 'm')), list = same.length ? same : pool, idx = +String(r.voice).slice(1) || 0;
+  return list.length ? list[idx % list.length].voice_id : null;
+}
 function partVoice(part, e, v) { // -> { voice, speed, gain }
   const a = part.act || {}, base = { voice: v, speed: a.speed || 1, gain: a.gain || 0 };
-  if (!part.who || !charsOn()) return part.who && charsOn() === false ? { voice: v, speed: 1, gain: 0 } : base;
-  const r = cast.get(part.who), st = CHAR_STYLES[(r && r.voice) || 'n0'] || CHAR_STYLES.n0;
-  if (e !== 'kokoro' || !st[0]) return base;
+  if (!part.who || !charsOn()) return base;
+  const r = cast.get(part.who); if (!r) return base;
+  if (e === 'eleven') { const id = elCharVoice(part.who, r, v); return id ? { voice: id, speed: 1, gain: base.gain } : base; }
+  const st = CHAR_STYLES[r.voice] || CHAR_STYLES.n0; if (!st[0]) return base;
+  if (e === 'piper') { const g = String(r.voice)[0], list = PIPER_CHARS[g], id = prefs.get('piperChars', false) && /^en_/.test(v) && list ? list[+String(r.voice).slice(1) % list.length] : null; return id && id !== v ? { voice: id, speed: 1, gain: base.gain } : base; }
+  if (e !== 'kokoro') return base;
   const own = 1 - st[1], id = `${v[0]}x_mix__${v}-${Math.round(own * 100)}__${st[0]}-${Math.round(st[1] * 100)}`;
-  return { voice: id, speed: +(st[2] * (a.speed || 1)).toFixed(3), gain: a.gain || 0 };
+  return { voice: id, speed: +(st[2] * (a.speed || 1)).toFixed(3), gain: base.gain };
+}
+function resample(x, from, to) { if (from === to) return x; const n = Math.round(x.length * to / from), o = new Float32Array(n), r = from / to; for (let i = 0; i < n; i++) { const t = i * r, k = Math.floor(t), f = t - k; o[i] = (x[k] || 0) * (1 - f) + (x[k + 1] || 0) * f; } return o; }
+function joinGap(pt) { // pause between a quote and its attribution, set by punctuation like a narrator would
+  const t = pt.t.replace(/["”’»“„]+$/, '');
+  if (/[,;:—–-]$/.test(t)) return pt.who ? 0.1 : 0.12;
+  if (/[.!?…]$/.test(t)) return 0.3;
+  return 0.14;
 }
 const sentParts = (c, s) => (charsOn() && dlg[c] && dlg[c][s] && dlg[c][s].length ? dlg[c][s] : [{ t: flat[c][s], who: '' }]); // 'Narrator only' reads sentences whole
 const singleVoiceKey = (c, s, e, v) => { const ps = sentParts(c, s); if (ps.length !== 1) return null; const pv = partVoice(ps[0], e, v); return pv.voice + '|' + pv.speed + '|' + pv.gain; };
@@ -846,25 +902,42 @@ const singleVoiceKey = (c, s, e, v) => { const ps = sentParts(c, s); if (ps.leng
 async function genChunk(e, v, c, s, j, pri, cache, owner) {
   const ps = sentParts(c, s);
   if (s === j && ps.length > 1) {
-    const outs = await Promise.all(ps.map(pt => { const pv = partVoice(pt, e, v); return NE.gen(e, pv.voice, speechText(pt.t), pri, cache, owner, null, pv.speed).then(r => ({ r, pv })); }));
+    const outs = await Promise.all(ps.map(pt => { const pv = partVoice(pt, e, v); return NE.gen(e, pv.voice, speechText(pt.t), pri, cache, owner, null, pv.speed).then(r => ({ r, pv, pt })); }));
     const sr = outs[0].r.sr, parts = [];
-    outs.forEach(({ r, pv }, i) => { const g = 10 ** (pv.gain / 20), x = fade(trimSilence(r.pcm, sr), sr); for (let k = 0; k < x.length; k++) x[k] *= g; parts.push(x); if (i < outs.length - 1) parts.push(silence(sr, 0.14)); });
+    outs.forEach(({ r, pv, pt }, i) => {
+      const x = fade(trimSilence(resample(r.pcm, r.sr, sr), sr), sr), rr = speechRms(x, sr), g = (rr ? 0.1 / rr : 1) * 10 ** (pv.gain / 20); // match loudness across voices
+      for (let k = 0; k < x.length; k++) x[k] *= g; parts.push(x); if (i < outs.length - 1) parts.push(silence(sr, joinGap(pt)));
+    });
     return { pcm: concat(parts), sr, gain: 0 };
   }
   const pv = partVoice(ps[0], e, v), r = await NE.gen(e, pv.voice, chunkText(c, s, j), pri, cache, owner, ctxFor(c, s, j), pv.speed);
   return { pcm: r.pcm, sr: r.sr, gain: pv.gain };
 }
 function renderCast() {
-  const ul = $('castList'); ul.innerHTML = '';
+  const ul = $('castList'); ul.innerHTML = ''; const e = engineName();
   const list = [...cast.entries()].filter(([, r]) => r.lines).sort((a, b) => b[1].lines - a[1].lines);
-  $('castHint').textContent = !book ? 'Open a book to see its characters.' : !list.length ? 'No dialogue found in this book.' : engineName() === 'kokoro' ? 'The narrator gives each character a consistent shade of voice. Change any that were guessed wrong.' : 'Character voices need a Kokoro voice. With other voices, whispers and shouts still change the delivery.';
+  $('castHint').textContent = !book ? 'Open a book to see its characters.' : !list.length ? 'No dialogue found in this book.' :
+    e === 'kokoro' ? 'The narrator gives each character a consistent shade of voice. Change a voice, or link two names that are the same person.' :
+    e === 'eleven' ? 'Each character gets a different voice from your ElevenLabs account. Change any here.' :
+    e === 'piper' ? 'Turn on extra Piper voices below to give characters their own voices.' : 'Device voices shift pitch and pace for each character.';
+  $('piperCharsRow').classList.toggle('hide', e !== 'piper');
   for (const [k, r] of list.slice(0, 40)) {
-    const li = document.createElement('li'), t = document.createElement('span'), sel = document.createElement('select');
-    t.className = 't'; t.textContent = `${r.name} · ${r.lines} line${r.lines === 1 ? '' : 's'}`; sel.setAttribute('aria-label', 'Voice for ' + r.name);
-    for (const [id, st] of Object.entries(CHAR_STYLES)) sel.add(new Option(st[3] + (id === r.auto ? ' (auto)' : ''), id));
-    sel.value = r.voice;
-    sel.onchange = () => { r.voice = sel.value; const all = prefs.get('cast.' + book.id, {}); all[k] = sel.value; prefs.set('cast.' + book.id, all); if (playing) jump(ch, si, true); };
-    li.append(t, sel); ul.appendChild(li);
+    const li = document.createElement('li'), t = document.createElement('span'), sel = document.createElement('select'), same = document.createElement('select');
+    t.className = 't'; t.textContent = `${r.name} · ${r.lines} line${r.lines === 1 ? '' : 's'}`; sel.setAttribute('aria-label', 'Voice for ' + r.name); same.setAttribute('aria-label', r.name + ' is the same person as');
+    if (e === 'eleven' && EL.voices) {
+      const cur = elCharVoice(k, r, $('voice').value); sel.add(new Option('Narrator voice', '__narr'));
+      for (const x of EL.voices) sel.add(new Option(x.name.split(' - ')[0] + (x.voice_id === cur ? ' (current)' : ''), x.voice_id));
+      sel.value = cur || '__narr';
+      sel.onchange = () => { const all = prefs.get('castel.' + book.id, {}); all[k] = sel.value === '__narr' ? $('voice').value : sel.value; prefs.set('castel.' + book.id, all); if (playing) jump(ch, si, true); };
+    } else {
+      for (const [id, st] of Object.entries(CHAR_STYLES)) sel.add(new Option(st[3] + (id === r.auto ? ' (auto)' : ''), id));
+      sel.value = r.voice;
+      sel.onchange = () => { r.voice = sel.value; const all = prefs.get('cast.' + book.id, {}); all[k] = sel.value; prefs.set('cast.' + book.id, all); if (playing) jump(ch, si, true); };
+    }
+    same.add(new Option('Different person', ''));
+    for (const [k2, r2] of list) if (k2 !== k) same.add(new Option('Same as ' + r2.name, k2));
+    same.onchange = () => { const al = prefs.get('alias.' + book.id, {}); if (same.value) al[k] = same.value; else delete al[k]; prefs.set('alias.' + book.id, al); analyzeDialogue(); renderCast(); if (playing) jump(ch, si, true); };
+    li.append(t, sel, same); ul.appendChild(li);
   }
 }
 
@@ -1257,7 +1330,7 @@ async function exportAudio() {
         if (r) {
           if (!enc) enc = newEnc(r.sr);
           if (it.title) { push(enc, story ? roomTone(master(fade(trimSilence(r.pcm, r.sr), r.sr), r.sr), c + 1) : r.pcm); push(enc, story ? roomTone(silence(enc.sr, it.gap), c + 7) : silence(enc.sr, it.gap)); }
-          else push(enc, assemble(r, c, it.s, it.j, story, story ? styleGap(c, it.j) : (pend[c].has(it.j) ? 0.6 : 0.15)).pcm);
+          else push(enc, resample(assemble(r, c, it.s, it.j, story, story ? styleGap(c, it.j) : (pend[c].has(it.j) ? 0.6 : 0.15)).pcm, r.sr, enc.sr));
         }
         if (it.count) done += it.count;
         const el = (Date.now() - t0) / 1000, eta = done ? el / done * (total - done) : 0;
@@ -1384,6 +1457,7 @@ $('rate').oninput = e => { $('rateV').textContent = (+e.target.value).toFixed(1)
 $('rate').onchange = () => { if (playing && !isNeural()) jump(ch, si); };
 $('pitch').onchange = e => { prefs.set('pitch', e.target.value); if (playing && !isNeural()) jump(ch, si); };
 $('fs').oninput = e => { document.documentElement.style.setProperty('--fs', e.target.value + 'px'); prefs.set('fs', e.target.value); };
+$('piperChars').onchange = e => { prefs.set('piperChars', e.target.checked); status(e.target.checked ? 'Characters will use extra Piper voices (downloaded the first time they speak).' : 'Characters use the narrator\'s Piper voice.'); if (playing) jump(ch, si, true); };
 $('chars').onchange = () => { prefs.set('chars', $('chars').value); if (playing) jump(ch, si, true); status($('chars').value === 'on' ? 'Character voices on.' : 'Narrator voice only.'); };
 $('style').onchange = () => { prefs.set('style', $('style').value); status($('style').value === 'story' ? 'Storyteller style: natural pauses, rhythm and timing.' : 'Plain style.'); };
 $('sleep').onchange = e => { const v = e.target.value; sleepEndCh = v === 'ch'; sleepAt = (v !== 'ch' && +v) ? Date.now() + v * 60000 : 0; status(v === '0' ? 'Sleep timer off.' : 'Sleep timer set.'); };
@@ -1415,6 +1489,7 @@ const mobile = navigator.userAgentData ? navigator.userAgentData.mobile : /Mobi|
 $('gpu').checked = prefs.get('gpu', false);
 $('style').value = prefs.get('style', 'story');
 $('chars').value = prefs.get('chars', 'on');
+$('piperChars').checked = prefs.get('piperChars', false);
 { const m = prefs.get('elModel', null); if (m) { if (![...$('elModel').options].some(o => o.value === m)) $('elModel').add(new Option(m, m)); $('elModel').value = m; } }
 elKeyState();
 if (prefs.get('gpu', null) === null && navigator.gpu && !mobile) { // default on only for a real (non-software) GPU
