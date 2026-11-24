@@ -5,20 +5,21 @@
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Audiobook Reader</title>
 <style>
-:root{--bg:#f6f4ef;--panel:#fff;--ink:#1d1d1f;--muted:#6b6b70;--line:#e3e0d8;--accent:#2f6f5e;--accent-ink:#fff;--hl:#ffe9a8;--read:#9a9aa0}
-@media (prefers-color-scheme:dark){:root:not([data-theme=light]){--bg:#121314;--panel:#1b1c1e;--ink:#ececee;--muted:#9a9aa2;--line:#2c2d31;--accent:#5fb39a;--accent-ink:#0d1512;--hl:#4a3f12;--read:#6a6a70}}
-:root[data-theme=dark]{--bg:#121314;--panel:#1b1c1e;--ink:#ececee;--muted:#9a9aa2;--line:#2c2d31;--accent:#5fb39a;--accent-ink:#0d1512;--hl:#4a3f12;--read:#6a6a70}
+:root{--bg:#f6f4ef;--panel:#fff;--ink:#1d1d1f;--muted:#6b6b70;--line:#e3e0d8;--accent:#2f6f5e;--accent-ink:#fff;--hl:#ffe9a8;--read:#9a9aa0;--warn:#fff4d6;--warn-ink:#6b4e00}
+@media (prefers-color-scheme:dark){:root:not([data-theme=light]){--bg:#121314;--panel:#1b1c1e;--ink:#ececee;--muted:#9a9aa2;--line:#2c2d31;--accent:#5fb39a;--accent-ink:#0d1512;--hl:#4a3f12;--read:#6a6a70;--warn:#3a3014;--warn-ink:#f3d98a}}
+:root[data-theme=dark]{--bg:#121314;--panel:#1b1c1e;--ink:#ececee;--muted:#9a9aa2;--line:#2c2d31;--accent:#5fb39a;--accent-ink:#0d1512;--hl:#4a3f12;--read:#6a6a70;--warn:#3a3014;--warn-ink:#f3d98a}
 *{box-sizing:border-box}
 html,body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.5 system-ui,-apple-system,Segoe UI,Roboto,sans-serif}
 button,select,input{font:inherit;color:inherit}
-header{display:flex;align-items:center;gap:12px;padding:12px 16px;border-bottom:1px solid var(--line);background:var(--panel);position:sticky;top:0;z-index:5}
+header{display:flex;align-items:center;gap:8px;padding:12px 16px;border-bottom:1px solid var(--line);background:var(--panel);position:sticky;top:0;z-index:5}
 header h1{font-size:18px;margin:0;flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .btn{border:1px solid var(--line);background:var(--panel);border-radius:10px;padding:8px 12px;cursor:pointer}
 .btn:hover{border-color:var(--accent)}
 .btn.primary{background:var(--accent);color:var(--accent-ink);border-color:var(--accent)}
 .btn:disabled{opacity:.45;cursor:default}
+.btn.sm{padding:4px 8px;font-size:13px;border-radius:8px}
 main{display:grid;grid-template-columns:280px 1fr;min-height:calc(100vh - 57px)}
-aside{border-right:1px solid var(--line);background:var(--panel);overflow:auto;max-height:calc(100vh - 57px - 132px);position:sticky;top:57px}
+aside{border-right:1px solid var(--line);background:var(--panel);overflow:auto;max-height:calc(100vh - 57px - 170px);position:sticky;top:57px}
 aside h2{font-size:12px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin:16px 16px 6px}
 .list{list-style:none;margin:0;padding:0 8px 12px}
 .list li{padding:7px 10px;border-radius:8px;cursor:pointer;font-size:14px;display:flex;gap:8px;align-items:center}
@@ -26,7 +27,7 @@ aside h2{font-size:12px;text-transform:uppercase;letter-spacing:.06em;color:var(
 .list li.active{background:var(--accent);color:var(--accent-ink)}
 .list li .x{margin-left:auto;opacity:.5;border:0;background:none;cursor:pointer}
 .list li span.t{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-#reader{padding:24px 16px 180px;max-width:760px;margin:0 auto;width:100%}
+#reader{padding:24px 16px 240px;max-width:760px;margin:0 auto;width:100%}
 #reader h2{font-family:Georgia,serif;font-weight:600;margin-top:0}
 #text{font-family:Georgia,'Times New Roman',serif;font-size:var(--fs,20px);line-height:1.7}
 #text p{margin:0 0 1em}
@@ -37,17 +38,26 @@ aside h2{font-size:12px;text-transform:uppercase;letter-spacing:.06em;color:var(
 #drop{border:2px dashed var(--line);border-radius:16px;padding:48px 20px;text-align:center;color:var(--muted);margin-top:24px}
 #drop.over{border-color:var(--accent);color:var(--ink)}
 #drop strong{color:var(--ink);font-size:20px;display:block;margin-bottom:8px}
-.player{position:fixed;left:0;right:0;bottom:0;background:var(--panel);border-top:1px solid var(--line);padding:10px 16px 14px;z-index:6}
+.player{position:fixed;left:0;right:0;bottom:0;background:var(--panel);border-top:1px solid var(--line);padding:10px 16px 12px;z-index:6}
 .row{display:flex;gap:8px;align-items:center;flex-wrap:wrap;justify-content:center}
 .ctrl{width:44px;height:44px;border-radius:50%;padding:0;display:inline-grid;place-items:center;font-size:18px}
 .ctrl.big{width:56px;height:56px;font-size:22px}
 .prog{display:flex;align-items:center;gap:10px;margin:0 auto 8px;max-width:900px;font-size:12px;color:var(--muted)}
 .prog input{flex:1}
 label.opt{font-size:13px;color:var(--muted);display:flex;align-items:center;gap:6px}
-select{max-width:220px;border:1px solid var(--line);background:var(--panel);border-radius:8px;padding:6px}
+select{max-width:240px;border:1px solid var(--line);background:var(--panel);border-radius:8px;padding:6px}
 #status{font-size:13px;color:var(--muted);text-align:center;min-height:18px;margin-top:4px}
+.bar{height:6px;background:var(--line);border-radius:3px;overflow:hidden;max-width:520px;margin:6px auto 0}
+.bar>i{display:block;height:100%;width:0;background:var(--accent);transition:width .2s}
+#banner{background:var(--warn);color:var(--warn-ink);font-size:13px;padding:8px 12px;border-radius:10px;max-width:760px;margin:0 auto 8px;display:flex;gap:8px;align-items:center;flex-wrap:wrap;justify-content:center}
+dialog{border:1px solid var(--line);border-radius:16px;background:var(--panel);color:var(--ink);max-width:520px;width:calc(100% - 32px);padding:20px}
+dialog::backdrop{background:rgba(0,0,0,.45)}
+dialog h3{margin:0 0 4px}
+dialog h4{margin:18px 0 6px;font-size:13px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted)}
+dialog .r{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin:6px 0}
+dialog p{margin:6px 0;font-size:14px;color:var(--muted)}
 .hide{display:none!important}
-@media (max-width:760px){main{grid-template-columns:1fr}aside{position:static;max-height:none;border-right:0;border-bottom:1px solid var(--line)}#tocToggle{display:inline-block}}
+@media (max-width:760px){main{grid-template-columns:1fr}aside{position:static;max-height:none;border-right:0;border-bottom:1px solid var(--line)}#tocToggle{display:inline-block}header h1{font-size:16px}}
 @media (min-width:761px){#tocToggle{display:none}}
 </style>
 </head>
@@ -55,7 +65,8 @@ select{max-width:220px;border:1px solid var(--line);background:var(--panel);bord
 <header>
   <button class="btn" id="tocToggle" title="Chapters & library">☰</button>
   <h1 id="title">Audiobook Reader</h1>
-  <button class="btn primary" id="openBtn">Open file</button>
+  <button class="btn" id="audioBtn" title="Export audio, downloads & diagnostics">⤓ Audio</button>
+  <button class="btn primary" id="openBtn">Open</button>
   <button class="btn" id="themeBtn" title="Toggle theme">◐</button>
   <input type="file" id="file" class="hide" accept=".txt,.md,.markdown,.html,.htm,.xhtml,.xml,.pdf,.epub,.docx,.odt,.rtf,.csv,.tsv,.json,.log,.srt,.vtt,.js,.ts,.py,.java,.c,.cpp,.cs,.go,.rb,.php,.css,.sql,.yaml,.yml,.ini,.png,.jpg,.jpeg,.webp,.bmp,.gif,.tif,.tiff,text/*,image/*">
 </header>
@@ -71,7 +82,8 @@ select{max-width:220px;border:1px solid var(--line);background:var(--panel);bord
   </section>
 </main>
 <div class="player">
-  <div class="prog"><span id="pos">0 / 0</span><input type="range" id="seek" min="0" max="0" value="0"><span id="eta">--</span></div>
+  <div id="banner" class="hide"></div>
+  <div class="prog"><span id="pos">0 / 0</span><input type="range" id="seek" min="0" max="0" value="0" aria-label="Position in chapter"><span id="eta">--</span></div>
   <div class="row">
     <button class="btn ctrl" id="prevCh" title="Previous chapter (Shift+←)">⏮</button>
     <button class="btn ctrl" id="back" title="Previous sentence (←)">↺</button>
@@ -80,42 +92,187 @@ select{max-width:220px;border:1px solid var(--line);background:var(--panel);bord
     <button class="btn ctrl" id="nextCh" title="Next chapter (Shift+→)">⏭</button>
   </div>
   <div class="row" style="margin-top:8px">
+    <label class="opt">Engine <select id="engine">
+      <option value="kokoro">Kokoro: most natural (free, ~92 MB once)</option>
+      <option value="piper">Piper: fast, 30+ languages (free)</option>
+      <option value="browser">Device voices: instant, no download</option>
+    </select></label>
     <label class="opt">Voice <select id="voice"></select></label>
+    <button class="btn sm" id="sample" title="Hear this voice">▶ Test</button>
     <label class="opt">Speed <input type="range" id="rate" min="0.5" max="3" step="0.1" value="1"><span id="rateV">1.0×</span></label>
-    <label class="opt">Pitch <input type="range" id="pitch" min="0.5" max="1.5" step="0.1" value="1"></label>
+    <label class="opt" id="pitchL">Pitch <input type="range" id="pitch" min="0.5" max="1.5" step="0.1" value="1"></label>
     <label class="opt">Text <input type="range" id="fs" min="14" max="32" step="1" value="20"></label>
     <label class="opt">Sleep <select id="sleep"><option value="0">Off</option><option value="5">5 min</option><option value="15">15 min</option><option value="30">30 min</option><option value="60">60 min</option><option value="ch">End of chapter</option></select></label>
   </div>
-  <div id="status"></div>
+  <div class="bar hide" id="dlBar"><i></i></div>
+  <div id="status" role="status"></div>
 </div>
+<audio id="audio" preload="auto"></audio>
+
+<dialog id="audioDlg">
+  <h3>Audio</h3>
+  <h4>Export as audio file</h4>
+  <p>Renders the book with the selected neural voice (Kokoro or Piper) into a file you can play anywhere. Keep this tab open while it runs.</p>
+  <div class="r"><label class="opt">What <select id="exScope">
+    <option value="ch">Current chapter</option>
+    <option value="rest">From current chapter to end</option>
+    <option value="book">Whole book (one file)</option>
+    <option value="chapters">Whole book (one file per chapter)</option>
+  </select></label>
+  <label class="opt">Format <select id="exFmt"><option value="mp3">MP3 (small)</option><option value="wav">WAV (lossless)</option></select></label></div>
+  <div class="r"><label class="opt"><input type="checkbox" id="exTitles" checked> Announce chapter titles</label></div>
+  <div class="r"><button class="btn primary" id="exStart">Start export</button><button class="btn hide" id="exCancel">Cancel</button></div>
+  <div class="bar hide" id="exBar"><i></i></div>
+  <p id="exStatus"></p>
+  <h4>Speed & hardware</h4>
+  <div class="r"><label class="opt"><input type="checkbox" id="gpu"> Use the GPU for Kokoro (much faster, but a 326 MB download instead of 92 MB)</label></div>
+  <p id="diag"></p>
+  <h4>Downloaded voices</h4>
+  <p id="storage">-</p>
+  <div class="r"><button class="btn" id="clearModels">Delete downloaded voices</button></div>
+  <div class="r" style="justify-content:flex-end;margin-top:14px"><button class="btn" id="closeDlg">Close</button></div>
+</dialog>
+
+<!-- Runs the neural voices off the main thread so the page never freezes -->
+<script type="text/plain" id="ttsWorker">
+const KOKORO_URL = 'https://cdn.jsdelivr.net/npm/kokoro-js@1.2.1/dist/kokoro.web.js';
+const KOKORO_ID = 'onnx-community/Kokoro-82M-v1.0-ONNX';
+const PIPER_URL = 'https://cdn.jsdelivr.net/npm/@mintplex-labs/piper-tts-web@1.0.5/+esm';
+const PIPER_PATHS = {
+  onnxWasm: 'https://cdn.jsdelivr.net/npm/onnxruntime-web@1.27.0/dist/',
+  piperData: 'https://cdn.jsdelivr.net/npm/@diffusionstudio/piper-wasm@1.0.0/build/piper_phonemize.data',
+  piperWasm: 'https://cdn.jsdelivr.net/npm/@diffusionstudio/piper-wasm@1.0.0/build/piper_phonemize.wasm'
+};
+let kokoro = null, kokoroP = null, kokoroDevice = '', piperMod = null, piperSess = null, piperVoice = '', piperP = null;
+const queue = []; let running = false, seq = 0;
+const post = (m, t) => self.postMessage(m, t || []);
+
+function getKokoro(gpu) {
+  if (kokoro) return Promise.resolve(kokoro);
+  return kokoroP ||= (async () => {
+    const { KokoroTTS } = await import(KOKORO_URL);
+    const progress = p => { if (p.status === 'progress' && /\.onnx$/.test(p.file || '')) post({ type: 'progress', engine: 'kokoro', loaded: p.loaded, total: p.total }); };
+    if (gpu) {
+      try {
+        if (self.navigator.gpu && await navigator.gpu.requestAdapter()) {
+          const k = await KokoroTTS.from_pretrained(KOKORO_ID, { dtype: 'fp32', device: 'webgpu', progress_callback: progress });
+          await k.generate('Hi.', { voice: 'af_heart' }); // verify the GPU path really works
+          kokoro = k; kokoroDevice = 'webgpu';
+        }
+      } catch (e) { post({ type: 'log', msg: 'WebGPU unavailable, using CPU: ' + (e && e.message) }); }
+    }
+    if (!kokoro) { kokoro = await KokoroTTS.from_pretrained(KOKORO_ID, { dtype: 'q8', device: 'wasm', progress_callback: progress }); kokoroDevice = 'wasm'; }
+    return kokoro;
+  })().catch(e => { kokoroP = null; throw e; });
+}
+async function piperModule() { return piperMod ||= await import(PIPER_URL); }
+async function getPiper(voice) {
+  if (piperSess && piperVoice === voice) return piperSess;
+  if (piperP && piperP.voice === voice) return piperP.p;
+  const mod = await piperModule();
+  const p = mod.TtsSession.create({ voiceId: voice, wasmPaths: PIPER_PATHS,
+    progress: x => { if (x.url !== mod.INFERENCE_PROGRESS_URL && x.total) post({ type: 'progress', engine: 'piper', loaded: x.loaded, total: x.total }); } })
+    .then(s => { piperSess = s; piperVoice = voice; return s; });
+  piperP = { voice, p }; p.catch(() => { if (piperP && piperP.p === p) piperP = null; });
+  return p;
+}
+function wavToPcm(buf) {
+  const v = new DataView(buf); let o = 12, sr = 22050, bits = 16, fmt = 1, ch = 1;
+  while (o + 8 <= v.byteLength) {
+    const id = String.fromCharCode(v.getUint8(o), v.getUint8(o + 1), v.getUint8(o + 2), v.getUint8(o + 3)), sz = v.getUint32(o + 4, true);
+    if (id === 'fmt ') { fmt = v.getUint16(o + 8, true); ch = v.getUint16(o + 10, true); sr = v.getUint32(o + 12, true); bits = v.getUint16(o + 22, true); }
+    else if (id === 'data') {
+      const bps = bits / 8, n = Math.floor(Math.min(sz, v.byteLength - o - 8) / bps / ch), out = new Float32Array(n);
+      for (let i = 0; i < n; i++) { const p = o + 8 + i * ch * bps; out[i] = fmt === 3 ? v.getFloat32(p, true) : bits === 16 ? v.getInt16(p, true) / 32768 : (v.getUint8(p) - 128) / 128; }
+      return { pcm: out, sr };
+    }
+    o += 8 + sz + (sz & 1);
+  }
+  throw new Error('Invalid audio from Piper');
+}
+function pump() {
+  if (running || !queue.length) return;
+  queue.sort((a, b) => a.pri - b.pri || a.seq - b.seq);
+  const j = queue.shift(); running = true;
+  (async () => {
+    const t0 = performance.now();
+    try {
+      let r;
+      if (j.engine === 'kokoro') { const k = await getKokoro(j.gpu); const a = await k.generate(j.text, { voice: j.voice, speed: 1 }); r = { pcm: a.audio, sr: a.sampling_rate }; }
+      else { const s = await getPiper(j.voice); r = wavToPcm(await (await s.predict(j.text)).arrayBuffer()); }
+      const pcm = new Float32Array(r.pcm);
+      post({ type: 'audio', id: j.id, pcm, sr: r.sr, ms: performance.now() - t0 }, [pcm.buffer]);
+    } catch (e) { post({ type: 'error', id: j.id, message: String((e && e.message) || e) }); }
+    finally { running = false; pump(); }
+  })();
+}
+self.onmessage = async ({ data: m }) => {
+  try {
+    if (m.type === 'gen') { queue.push({ ...m, seq: ++seq }); pump(); }
+    else if (m.type === 'clear') { for (const j of queue.splice(0)) post({ type: 'dropped', id: j.id }); post({ type: 'ok', id: m.id }); }
+    else if (m.type === 'load') {
+      if (m.engine === 'kokoro') {
+        const k = await getKokoro(m.gpu);
+        post({ type: 'ok', id: m.id, device: kokoroDevice, voices: Object.entries(k.voices).map(([id, v]) => ({ id, ...v })) });
+      } else { await getPiper(m.voice); post({ type: 'ok', id: m.id, device: 'wasm' }); }
+    }
+    else if (m.type === 'voices') {
+      const list = await (await piperModule()).voices();
+      post({ type: 'ok', id: m.id, voices: list.map(v => ({ id: v.key, name: v.name, lang: v.language.code, langName: v.language.name_english, country: v.language.country_english, quality: v.quality,
+        mb: Math.round(Object.entries(v.files || {}).filter(([f]) => f.endsWith('.onnx')).reduce((n, [, f]) => n + (f.size_bytes || 0), 0) / 1e6) })) });
+    }
+    else if (m.type === 'flush') {
+      try { await (await piperModule()).flush(); } catch {}
+      kokoro = null; kokoroP = null; piperSess = null; piperP = null; piperVoice = '';
+      post({ type: 'ok', id: m.id });
+    }
+  } catch (e) { post({ type: 'error', id: m.id, message: String((e && e.message) || e) }); }
+};
+</script>
+
+<script>
+// Cross-origin isolation lets neural voices use all CPU cores (needs coi-sw.js next to this file, http/https only).
+(() => {
+  try {
+    if (window.crossOriginIsolated || !('serviceWorker' in navigator) || !/^https?:$/.test(location.protocol)) return;
+    if (localStorage.getItem('abr.coiFailed')) return;
+    navigator.serviceWorker.register('coi-sw.js').then(() => navigator.serviceWorker.ready).then(() => {
+      if (window.crossOriginIsolated) return;
+      if (sessionStorage.getItem('abr.coiTried')) { localStorage.setItem('abr.coiFailed', '1'); return; }
+      sessionStorage.setItem('abr.coiTried', '1'); location.reload();
+    }).catch(() => {});
+  } catch {}
+})();
+</script>
 
 <script>
 (() => {
 'use strict';
 const $ = id => document.getElementById(id);
 const synth = window.speechSynthesis;
+const audio = $('audio');
 const LIBS = {
   pdf: 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js',
   pdfWorker: 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js',
   jszip: 'https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js',
   mammoth: 'https://cdn.jsdelivr.net/npm/mammoth@1.8.0/mammoth.browser.min.js',
-  tesseract: 'https://cdn.jsdelivr.net/npm/tesseract.js@5.1.0/dist/tesseract.min.js'
+  tesseract: 'https://cdn.jsdelivr.net/npm/tesseract.js@5.1.0/dist/tesseract.min.js',
+  lame: 'https://cdn.jsdelivr.net/npm/lamejs@1.2.1/lame.min.js'
 };
 const loaded = {};
 const loadScript = src => loaded[src] ||= new Promise((res, rej) => {
-  const s = document.createElement('script'); s.src = src; s.onload = res;
-  s.onerror = () => { delete loaded[src]; rej(new Error('Failed to load ' + src)); };
+  const s = document.createElement('script'); s.src = src; s.crossOrigin = 'anonymous'; s.onload = res;
+  s.onerror = () => { delete loaded[src]; rej(new Error('Could not load a component (check your internet connection).')); };
   document.head.appendChild(s);
 });
 
 // ---------- state ----------
-let book = null;          // {id,name,chapters:[{title,paras:[[sentence,...],...]}]}
-let flat = [];            // per chapter: flat sentence list
-let ch = 0, si = 0;       // chapter index, sentence index
+let book = null, flat = [], pend = [];   // sentences per chapter, paragraph-end indices per chapter
+let ch = 0, si = 0;
 let playing = false, token = 0, sleepAt = 0, sleepEndCh = false;
 const status = m => $('status').textContent = m || '';
 
-// ---------- storage (IndexedDB, all failures non-fatal) ----------
+// ---------- storage ----------
 const db = (() => {
   let p;
   const open = () => p ||= new Promise((res, rej) => {
@@ -127,12 +284,8 @@ const db = (() => {
   const tx = async (mode, fn) => { try { const d = await open(); return await new Promise((res, rej) => {
     const t = d.transaction('books', mode), st = t.objectStore('books'), r = fn(st);
     t.oncomplete = () => res(r && r.result); t.onerror = () => rej(t.error); }); } catch { return null; } };
-  return {
-    put: b => tx('readwrite', s => s.put(b)),
-    get: id => tx('readonly', s => s.get(id)),
-    del: id => tx('readwrite', s => s.delete(id)),
-    all: () => tx('readonly', s => s.getAll())
-  };
+  return { put: b => tx('readwrite', s => s.put(b)), get: id => tx('readonly', s => s.get(id)),
+           del: id => tx('readwrite', s => s.delete(id)), all: () => tx('readonly', s => s.getAll()) };
 })();
 const prefs = {
   get(k, d) { try { const v = localStorage.getItem('abr.' + k); return v == null ? d : JSON.parse(v); } catch { return d; } },
@@ -146,12 +299,12 @@ function sentences(p) {
   p = p.replace(/\s+/g, ' ').trim(); if (!p) return [];
   let out = segmenter ? [...segmenter.segment(p)].map(x => x.segment.trim())
                       : (p.match(/[^.!?。！？]+[.!?。！？]+["'”’)\]]*|\S[^.!?。！？]*$/g) || [p]).map(x => x.trim());
-  out = out.filter(Boolean).reduce((a, s) => { // re-join splits after abbreviations
+  out = out.filter(Boolean).reduce((a, s) => {
     if (a.length && /\b(Mr|Mrs|Ms|Dr|Prof|St|Sr|Jr|vs|etc|e\.g|i\.e|No|Fig|[A-Z])\.$/.test(a[a.length - 1])) a[a.length - 1] += ' ' + s; else a.push(s);
     return a; }, []);
   const res = [];
   for (let s of out) {
-    while (s.length > MAX) { // split long runs at punctuation, then whitespace
+    while (s.length > MAX) {
       let cut = Math.max(s.lastIndexOf(', ', MAX), s.lastIndexOf('; ', MAX), s.lastIndexOf(': ', MAX));
       if (cut < MAX / 3) cut = s.lastIndexOf(' ', MAX); if (cut < 1) cut = MAX;
       res.push(s.slice(0, cut + 1).trim()); s = s.slice(cut + 1).trim();
@@ -174,19 +327,16 @@ function splitPlain(text, name) {
       text.slice(m.index + m[0].length, i + 1 < marks.length ? marks[i + 1].index : undefined))));
     return out.filter(Boolean);
   }
-  // no headings: chunk into ~6000 char parts on paragraph boundaries
   const paras = text.split(/\n\s*\n/), out = []; let buf = '', n = 1;
   for (const p of paras) { buf += p + '\n\n'; if (buf.length > 6000) { out.push(chapter(`Part ${n++}`, buf)); buf = ''; } }
   if (buf.trim()) out.push(chapter(out.length ? `Part ${n}` : name, buf));
   return out.filter(Boolean);
 }
-
 function splitHtmlDoc(doc, fallback) {
   doc.querySelectorAll('script,style,noscript,nav,svg,head,template').forEach(e => e.remove());
   const body = doc.body || doc.documentElement;
   const blocks = body.querySelectorAll('h1,h2,h3,p,li,blockquote,pre,td,th,dd,dt,figcaption,div:not(:has(p,div,h1,h2,h3,li,blockquote,pre,table))');
-  const out = []; let cur = { title: fallback, text: '' };
-  const seen = new Set();
+  const out = []; let cur = { title: fallback, text: '' }; const seen = new Set();
   for (const el of blocks) {
     if ([...seen].some(s => s.contains(el))) continue; seen.add(el);
     const t = el.textContent.replace(/\s+/g, ' ').trim(); if (!t) continue;
@@ -199,23 +349,17 @@ function splitHtmlDoc(doc, fallback) {
   return out.filter(Boolean);
 }
 const parseHTML = (html, fallback) => splitHtmlDoc(new DOMParser().parseFromString(html, 'text/html'), fallback);
-
-function mdToText(md) {
-  return md.replace(/```[\s\S]*?```/g, '').replace(/!\[[^\]]*\]\([^)]*\)/g, '')
-    .replace(/\[([^\]]+)\]\([^)]*\)/g, '$1').replace(/[*_~`>]+/g, '').replace(/^\s*[-+]\s+/gm, '');
-}
-function rtfToText(rtf) {
-  return rtf.replace(/\\par[d]?/g, '\n\n').replace(/\\'([0-9a-f]{2})/gi, (_, h) => String.fromCharCode(parseInt(h, 16)))
-    .replace(/\\u(-?\d+)\??/g, (_, n) => String.fromCharCode((+n + 65536) % 65536))
-    .replace(/\{\\\*[^{}]*\}/g, '').replace(/\{\\(fonttbl|colortbl|stylesheet|info)[\s\S]*?\}\s*\}/g, '')
-    .replace(/\\[a-z]+-?\d* ?/gi, '').replace(/[{}]/g, '');
-}
+const mdToText = md => md.replace(/```[\s\S]*?```/g, '').replace(/!\[[^\]]*\]\([^)]*\)/g, '')
+  .replace(/\[([^\]]+)\]\([^)]*\)/g, '$1').replace(/[*_~`>]+/g, '').replace(/^\s*[-+]\s+/gm, '');
+const rtfToText = rtf => rtf.replace(/\\par[d]?/g, '\n\n').replace(/\\'([0-9a-f]{2})/gi, (_, h) => String.fromCharCode(parseInt(h, 16)))
+  .replace(/\\u(-?\d+)\??/g, (_, n) => String.fromCharCode((+n + 65536) % 65536))
+  .replace(/\{\\\*[^{}]*\}/g, '').replace(/\{\\(fonttbl|colortbl|stylesheet|info)[\s\S]*?\}\s*\}/g, '')
+  .replace(/\\[a-z]+-?\d* ?/gi, '').replace(/[{}]/g, '');
 
 // ---------- format readers ----------
-async function readPDF(buf, name) {
+async function readPDF(buf) {
   await loadScript(LIBS.pdf); pdfjsLib.GlobalWorkerOptions.workerSrc = LIBS.pdfWorker;
   const pdf = await pdfjsLib.getDocument({ data: buf }).promise; const out = [];
-  let outline = null; try { outline = await pdf.getOutline(); } catch {}
   for (let i = 1; i <= pdf.numPages; i++) {
     status(`Reading PDF page ${i}/${pdf.numPages}…`);
     const tc = await (await pdf.getPage(i)).getTextContent(); let t = '', lastY = null;
@@ -227,7 +371,7 @@ async function readPDF(buf, name) {
     t = t.replace(/-\n(\w)/g, '$1').replace(/([^\n])\n(?!\n)/g, '$1 ');
     const c = chapter(`Page ${i}`, t); if (c) out.push(c);
   }
-  if (!out.length) { status('No text layer found — running OCR on PDF pages (slow)…'); return ocrPDF(pdf); }
+  if (!out.length) { status('No text layer found, so running OCR on the PDF pages (slow)…'); return ocrPDF(pdf); }
   return out;
 }
 async function ocrPDF(pdf) {
@@ -237,11 +381,11 @@ async function ocrPDF(pdf) {
     const page = await pdf.getPage(i), vp = page.getViewport({ scale: 2 });
     const c = document.createElement('canvas'); c.width = vp.width; c.height = vp.height;
     await page.render({ canvasContext: c.getContext('2d'), viewport: vp }).promise;
-    const { data } = await w.recognize(c); const ch = chapter(`Page ${i}`, data.text); if (ch) out.push(ch);
+    const { data } = await w.recognize(c); const cc = chapter(`Page ${i}`, data.text); if (cc) out.push(cc);
   } } finally { await w.terminate(); }
   return out;
 }
-async function readEPUB(buf, name) {
+async function readEPUB(buf) {
   await loadScript(LIBS.jszip); const zip = await JSZip.loadAsync(buf);
   const xml = s => new DOMParser().parseFromString(s, 'application/xml');
   const container = xml(await zip.file('META-INF/container.xml').async('string'));
@@ -253,22 +397,18 @@ async function readEPUB(buf, name) {
   const out = []; const refs = [...opf.querySelectorAll('spine > itemref')];
   for (let k = 0; k < refs.length; k++) {
     const href = manifest[refs[k].getAttribute('idref')]; if (!href) continue;
-    const path = decodeURIComponent(base + href.split('#')[0]); const f = zip.file(path); if (!f) continue;
+    const f = zip.file(decodeURIComponent(base + href.split('#')[0])); if (!f) continue;
     status(`Reading EPUB section ${k + 1}/${refs.length}…`);
     const doc = new DOMParser().parseFromString(await f.async('string'), 'text/html');
     const h = doc.querySelector('h1,h2,h3,title')?.textContent?.replace(/\s+/g, ' ').trim();
     doc.querySelectorAll('script,style').forEach(e => e.remove());
     const parts = [...doc.body.querySelectorAll('p,h1,h2,h3,h4,li,blockquote,pre,div:not(:has(p,div))')]
       .map(e => e.textContent.replace(/\s+/g, ' ').trim()).filter(Boolean);
-    const text = (parts.length ? [...new Set(parts)] : [doc.body.textContent]).join('\n\n');
-    const c = chapter(h || `Section ${out.length + 1}`, text); if (c) out.push(c);
+    const c = chapter(h || `Section ${out.length + 1}`, (parts.length ? [...new Set(parts)] : [doc.body.textContent]).join('\n\n')); if (c) out.push(c);
   }
   return { chapters: out, title };
 }
-async function readDOCX(buf, name) {
-  await loadScript(LIBS.mammoth); const r = await mammoth.convertToHtml({ arrayBuffer: buf });
-  return parseHTML(r.value, name);
-}
+async function readDOCX(buf, name) { await loadScript(LIBS.mammoth); return parseHTML((await mammoth.convertToHtml({ arrayBuffer: buf })).value, name); }
 async function readODT(buf, name) {
   await loadScript(LIBS.jszip); const zip = await JSZip.loadAsync(buf);
   const doc = new DOMParser().parseFromString(await zip.file('content.xml').async('string'), 'application/xml');
@@ -285,12 +425,10 @@ async function readImage(file, name) {
   const w = await Tesseract.createWorker('eng');
   try { const { data } = await w.recognize(file); return splitPlain(data.text, name); } finally { await w.terminate(); }
 }
-
 async function parseFile(file) {
-  const name = file.name.replace(/\.[^.]+$/, ''), ext = (file.name.split('.').pop() || '').toLowerCase();
-  const type = file.type || '';
-  if (ext === 'pdf' || type === 'application/pdf') return { chapters: await readPDF(await file.arrayBuffer(), name) };
-  if (ext === 'epub') return readEPUB(await file.arrayBuffer(), name);
+  const name = file.name.replace(/\.[^.]+$/, ''), ext = (file.name.split('.').pop() || '').toLowerCase(), type = file.type || '';
+  if (ext === 'pdf' || type === 'application/pdf') return { chapters: await readPDF(await file.arrayBuffer()) };
+  if (ext === 'epub') return readEPUB(await file.arrayBuffer());
   if (ext === 'docx') return { chapters: await readDOCX(await file.arrayBuffer(), name) };
   if (ext === 'odt') return { chapters: await readODT(await file.arrayBuffer(), name) };
   if (type.startsWith('image/') || /^(png|jpe?g|webp|bmp|gif|tiff?)$/.test(ext)) return { chapters: await readImage(file, name) };
@@ -305,9 +443,8 @@ async function parseFile(file) {
   if (text.includes('\u0000')) throw new Error('This looks like a binary file with no readable text.');
   return { chapters: splitPlain(text, name) };
 }
-
 async function openFile(file) {
-  stop(); status(`Opening ${file.name}…`);
+  pause(); status(`Opening ${file.name}…`);
   try {
     const r = await parseFile(file);
     if (!r.chapters || !r.chapters.length) throw new Error('No readable text found in this file.');
@@ -317,11 +454,11 @@ async function openFile(file) {
     status(prev ? 'Resumed where you left off.' : `Loaded ${r.chapters.length} section(s). Press Play.`);
   } catch (e) { console.error(e); status('Error: ' + e.message); }
 }
-
 async function loadBook(b) {
   book = b; flat = b.chapters.map(c => c.paras.flat());
+  pend = b.chapters.map(c => { const s = new Set(); let k = 0; for (const p of c.paras) { k += p.length; s.add(k - 1); } return s; });
   ch = Math.min(b.ch || 0, flat.length - 1); si = Math.min(b.si || 0, flat[ch].length - 1);
-  $('title').textContent = b.name; document.title = b.name + ' — Audiobook Reader';
+  $('title').textContent = b.name; document.title = b.name + ' | Audiobook Reader';
   $('drop').classList.add('hide'); await db.put(b); renderTOC(); renderChapter(); renderLib();
 }
 
@@ -331,7 +468,7 @@ function renderTOC() {
   book.chapters.forEach((c, i) => {
     const li = document.createElement('li'); li.innerHTML = '<span class="t"></span>';
     li.firstChild.textContent = c.title; li.title = c.title;
-    li.onclick = () => jump(i, 0, playing); if (i === ch) li.classList.add('active');
+    li.onclick = () => jump(i, 0); if (i === ch) li.classList.add('active');
     $('toc').appendChild(li);
   });
 }
@@ -340,10 +477,9 @@ async function renderLib() {
   $('lib').innerHTML = all.length ? '' : '<li style="cursor:default;color:var(--muted)">Opened books appear here</li>';
   for (const b of all) {
     const li = document.createElement('li'); if (book && b.id === book.id) li.classList.add('active');
-    const pct = Math.round(100 * (b.ch + 1) / b.chapters.length);
     li.innerHTML = '<span class="t"></span><small></small><button class="x" title="Remove">✕</button>';
-    li.querySelector('.t').textContent = b.name; li.querySelector('small').textContent = pct + '%';
-    li.onclick = e => { if (e.target.classList.contains('x')) return; stop(); loadBook(b); };
+    li.querySelector('.t').textContent = b.name; li.querySelector('small').textContent = Math.round(100 * (b.ch + 1) / b.chapters.length) + '%';
+    li.onclick = e => { if (e.target.classList.contains('x')) return; pause(); loadBook(b); };
     li.querySelector('.x').onclick = async () => { await db.del(b.id); if (book && book.id === b.id) location.reload(); else renderLib(); };
     $('lib').appendChild(li);
   }
@@ -360,54 +496,239 @@ function renderChapter() {
   [...$('toc').children].forEach((li, i) => li.classList.toggle('active', i === ch));
   $('seek').max = Math.max(0, flat[ch].length - 1); highlight(true);
 }
+let lastHl = -1;
 function highlight(scroll) {
-  const spans = $('text').children.length ? $('text').querySelectorAll('.s') : [];
+  const spans = $('text').querySelectorAll('.s');
   spans.forEach(s => { const i = +s.dataset.i; s.classList.toggle('cur', i === si); s.classList.toggle('done', i < si); });
-  const cur = spans[si]; if (cur && scroll) cur.scrollIntoView({ block: 'center', behavior: 'smooth' });
+  const cur = spans[si]; if (cur && scroll && lastHl !== si) cur.scrollIntoView({ block: 'center', behavior: 'smooth' }); lastHl = si;
   $('seek').value = si; $('pos').textContent = `Ch ${ch + 1}/${flat.length} · ${si + 1}/${flat[ch].length}`;
-  // rough ETA: ~15 chars/sec at 1x
   const rem = flat.slice(ch).reduce((n, arr, j) => n + arr.slice(j ? 0 : si).join(' ').length, 0) / (15 * +$('rate').value);
   $('eta').textContent = rem > 3600 ? `${(rem / 3600).toFixed(1)}h left` : `${Math.ceil(rem / 60)}m left`;
+  if ('mediaSession' in navigator && book) try {
+    navigator.mediaSession.metadata = new MediaMetadata({ title: book.chapters[ch].title, artist: book.name, album: 'Audiobook Reader' });
+  } catch {}
 }
 let saveT; function save() { clearTimeout(saveT); saveT = setTimeout(() => { if (book) { book.ch = ch; book.si = si; book.updated = Date.now(); db.put(book); } }, 400); }
 
-// ---------- speech ----------
-let voices = [];
-function loadVoices() {
-  voices = synth.getVoices().slice().sort((a, b) => (b.lang.startsWith((navigator.language || 'en').slice(0, 2)) - a.lang.startsWith((navigator.language || 'en').slice(0, 2))) || a.name.localeCompare(b.name));
-  const sel = $('voice'), saved = prefs.get('voice', ''); sel.innerHTML = '';
-  voices.forEach((v, i) => { const o = new Option(`${v.name} (${v.lang})${v.localService ? '' : ' ☁'}`, v.voiceURI); sel.add(o); });
-  if (saved && voices.some(v => v.voiceURI === saved)) sel.value = saved;
-  else { const best = voices.find(v => /natural|neural|premium|enhanced|google/i.test(v.name) && v.lang.startsWith('en')); if (best) sel.value = best.voiceURI; }
+// ---------- neural voice engine (Kokoro / Piper, runs in a worker) ----------
+const NE = {
+  w: null, seq: 0, waits: new Map(), cache: new Map(), device: {}, ready: {}, stats: { ms: 0, sec: 0, n: 0 },
+  worker() {
+    if (this.w) return this.w;
+    const url = URL.createObjectURL(new Blob([$('ttsWorker').textContent], { type: 'text/javascript' }));
+    const w = new Worker(url); // classic worker + dynamic import() also works for pages opened from disk (file://)
+    w.onmessage = e => this.onmsg(e.data);
+    w.onerror = e => { e.preventDefault?.(); this.reset('The voice engine stopped unexpectedly' + (e.message ? ': ' + e.message : '')); };
+    return this.w = w;
+  },
+  reset(msg) {
+    try { this.w && this.w.terminate(); } catch {}
+    this.w = null; for (const [, p] of this.waits) p.reject(new Error(msg)); this.waits.clear(); this.cache.clear(); this.ready = {};
+  },
+  call(msg) { const id = ++this.seq; return new Promise((resolve, reject) => { this.waits.set(id, { resolve, reject }); this.worker().postMessage({ ...msg, id }); }); },
+  onmsg(m) {
+    if (m.type === 'progress') return showDl(m);
+    if (m.type === 'log') return console.warn(m.msg);
+    const w = this.waits.get(m.id); if (!w) return; this.waits.delete(m.id);
+    if (m.type === 'error' || m.type === 'dropped') w.reject(Object.assign(new Error(m.message || 'cancelled'), { dropped: m.type === 'dropped' }));
+    else w.resolve(m);
+  },
+  async load(engine, voice) {
+    const key = engine === 'kokoro' ? 'kokoro' : 'piper|' + voice;
+    if (this.ready[key]) return this.ready[key];
+    const p = this.call({ type: 'load', engine, voice, gpu: useGPU() }).then(m => { if (m.device) this.device[engine] = m.device; hideDl(); markDownloaded(key);
+      if (m.voices && !kokoroList) { kokoroList = m.voices; if (engineName() === 'kokoro') { const cur = $('voice').value; fillVoices().then(() => { $('voice').value = cur; }); } }
+      return m; });
+    this.ready[key] = p; p.catch(() => { delete this.ready[key]; hideDl(); });
+    return p;
+  },
+  gen(engine, voice, text, pri = 0, cache = true) {
+    const k = engine + '|' + voice + '|' + text;
+    if (cache && this.cache.has(k)) return this.cache.get(k);
+    const p = this.call({ type: 'gen', engine, voice, text, pri, gpu: useGPU() }).then(m => {
+      const sec = m.pcm.length / m.sr; this.stats.ms += m.ms; this.stats.sec += sec; this.stats.n++;
+      return { pcm: m.pcm, sr: m.sr };
+    });
+    if (cache) {
+      this.cache.set(k, p); p.catch(() => this.cache.delete(k));
+      while (this.cache.size > 60) this.cache.delete(this.cache.keys().next().value);
+    }
+    return p;
+  },
+  clear() { if (this.w) return this.call({ type: 'clear' }).catch(() => {}); },
+  rtf() { return this.stats.sec ? (this.stats.ms / 1000) / this.stats.sec : 0; } // <1 means faster than real time
+};
+const useGPU = () => $('gpu').checked;
+const engineName = () => $('engine').value;
+const isNeural = () => engineName() !== 'browser';
+function markDownloaded(k) { const s = prefs.get('dl', []); if (!s.includes(k)) { s.push(k); prefs.set('dl', s); } }
+const isDownloaded = k => prefs.get('dl', []).includes(k);
+function showDl(m) {
+  const pct = m.total ? Math.min(100, Math.round(100 * m.loaded / m.total)) : 0;
+  $('dlBar').classList.remove('hide'); $('dlBar').firstElementChild.style.width = pct + '%';
+  status(`Downloading ${m.engine === 'kokoro' ? 'Kokoro' : 'Piper'} voice (one time only): ${pct}% of ${(m.total / 1e6).toFixed(0)} MB`);
 }
-function speakCurrent() {
+function hideDl() { $('dlBar').classList.add('hide'); if (/^Downloading/.test($('status').textContent)) status(''); }
+
+// WAV encoding helpers
+function floatToInt16(f) { const o = new Int16Array(f.length); for (let i = 0; i < f.length; i++) { const s = Math.max(-1, Math.min(1, f[i])); o[i] = s < 0 ? s * 32768 : s * 32767; } return o; }
+function wavHeader(samples, sr) {
+  const v = new DataView(new ArrayBuffer(44)), w = (o, s) => [...s].forEach((c, i) => v.setUint8(o + i, c.charCodeAt(0)));
+  w(0, 'RIFF'); v.setUint32(4, 36 + samples * 2, true); w(8, 'WAVE'); w(12, 'fmt '); v.setUint32(16, 16, true); v.setUint16(20, 1, true);
+  v.setUint16(22, 1, true); v.setUint32(24, sr, true); v.setUint32(28, sr * 2, true); v.setUint16(32, 2, true); v.setUint16(34, 16, true);
+  w(36, 'data'); v.setUint32(40, samples * 2, true); return v.buffer;
+}
+const silence = (sr, sec) => new Float32Array(Math.round(sr * sec));
+const speakable = t => /[\p{L}\p{N}]/u.test(t);
+
+// ---------- voices UI ----------
+let browserVoices = [], piperList = null, kokoroList = null;
+const KOKORO_FALLBACK = ['af_heart','af_bella','af_nicole','af_aoede','af_kore','af_sarah','af_nova','af_sky','af_alloy','af_jessica','af_river','am_michael','am_fenrir','am_puck','am_echo','am_eric','am_liam','am_onyx','am_adam','am_santa','bf_emma','bf_isabella','bf_alice','bf_lily','bm_george','bm_fable','bm_lewis','bm_daniel'].map(id => ({ id }));
+function langPrefix() { return (navigator.language || 'en').slice(0, 2).toLowerCase(); }
+async function fillVoices() {
+  const e = engineName(), sel = $('voice'), saved = prefs.get('voice.' + e, '');
+  sel.innerHTML = ''; $('pitchL').classList.toggle('hide', e !== 'browser');
+  if (e === 'browser') {
+    browserVoices = synth ? synth.getVoices().slice().sort((a, b) => (b.lang.startsWith(langPrefix()) - a.lang.startsWith(langPrefix())) || a.name.localeCompare(b.name)) : [];
+    browserVoices.forEach(v => sel.add(new Option(`${v.name} (${v.lang})${v.localService ? '' : ' ☁'}`, v.voiceURI)));
+    if (!browserVoices.length) sel.add(new Option('Default voice', ''));
+    if (saved && browserVoices.some(v => v.voiceURI === saved)) sel.value = saved;
+    else { const best = browserVoices.find(v => /natural|neural|premium|enhanced|google/i.test(v.name) && v.lang.startsWith(langPrefix())); if (best) sel.value = best.voiceURI; }
+  } else if (e === 'kokoro') {
+    const grade = g => 'ABCDF'.indexOf((g || 'C')[0]);
+    const list = (kokoroList || KOKORO_FALLBACK).slice().sort((a, b) => grade(a.overallGrade) - grade(b.overallGrade));
+    const accent = id => id[0] === 'b' ? 'British' : 'American', sex = id => id[1] === 'f' ? 'female' : 'male';
+    list.forEach(v => sel.add(new Option(`${v.name || v.id.split('_')[1].replace(/^./, c => c.toUpperCase())}: ${accent(v.id)} ${sex(v.id)}${v.overallGrade ? ' · grade ' + v.overallGrade : ''}${v.traits ? ' ' + v.traits : ''}`, v.id)));
+    sel.value = list.some(v => v.id === saved) ? saved : 'af_heart';
+  } else {
+    sel.add(new Option('Loading voice list…', '')); sel.disabled = true;
+    try { if (!piperList) piperList = (await NE.call({ type: 'voices' })).voices; }
+    catch (err) { sel.innerHTML = ''; sel.add(new Option('Could not load voice list', '')); sel.disabled = false; status('Piper voice list unavailable: ' + err.message); return; }
+    if (engineName() !== 'piper') return;
+    const qs = { high: 0, medium: 1, low: 2, x_low: 3 }, lp = langPrefix();
+    const list = piperList.filter(v => v.quality !== 'x_low').sort((a, b) => (b.lang.startsWith(lp) - a.lang.startsWith(lp)) || a.lang.localeCompare(b.lang) || (qs[a.quality] - qs[b.quality]) || a.name.localeCompare(b.name));
+    sel.innerHTML = '';
+    list.forEach(v => sel.add(new Option(`${v.langName} (${v.country}): ${v.name.replace(/_/g, ' ')} · ${v.quality} · ${v.mb} MB${isDownloaded('piper|' + v.id) ? ' ✓' : ''}`, v.id)));
+    sel.disabled = false;
+    sel.value = list.some(v => v.id === saved) ? saved : (list.find(v => v.id === 'en_US-hfc_female-medium') || list[0] || {}).id || '';
+  }
+}
+function confirmDownload(e, voice) {
+  const key = e === 'kokoro' ? 'kokoro' : 'piper|' + voice;
+  if (isDownloaded(key) || NE.ready[key]) return true;
+  const mb = e === 'kokoro' ? (useGPU() ? 326 : 92) : ((piperList || []).find(v => v.id === voice) || {}).mb || 60;
+  return confirm(`This free ${e === 'kokoro' ? 'Kokoro' : 'Piper'} voice downloads about ${mb} MB once, then works offline. Continue?\n\n(Cancel to use your device's built-in voices instead.)`);
+}
+function fallbackToBrowser(reason) {
+  status(`${reason} Switched to device voices.`);
+  $('engine').value = 'browser'; prefs.set('engine', 'browser'); fillVoices();
+}
+
+// ---------- playback ----------
+let audioFor = null, audioURL = null, ignorePauseUntil = 0, stalls = 0, failures = 0, bannerShown = false;
+function stopAudio() { ignorePauseUntil = performance.now() + 800; try { audio.pause(); } catch {} }
+function setPlayBtn() { $('play').textContent = playing ? '⏸' : '▶'; if ('mediaSession' in navigator) try { navigator.mediaSession.playbackState = playing ? 'playing' : 'paused'; } catch {} }
+const nextPos = (c, s) => s + 1 < flat[c].length ? [c, s + 1] : c + 1 < flat.length ? [c + 1, 0] : null;
+
+function prefetch(my) {
+  const e = engineName(), v = $('voice').value; let pos = [ch, si], secs = 0;
+  for (let k = 0; k < 10; k++) {
+    pos = nextPos(...pos); if (!pos) break;
+    const t = flat[pos[0]][pos[1]]; if (!speakable(t)) continue;
+    secs += t.length / 15; NE.gen(e, v, t, 1).catch(() => {});
+    if (secs > 45) break;
+  }
+}
+async function speakCurrent() {
   if (!book) return; const my = ++token;
   if (si >= flat[ch].length) {
     if (sleepEndCh) { sleepEndCh = false; $('sleep').value = '0'; return pause('Sleep timer: stopped at end of chapter.'); }
-    if (ch + 1 >= flat.length) { pause('Finished. 🎉'); return; }
+    if (ch + 1 >= flat.length) return pause('Finished. 🎉');
     ch++; si = 0; renderChapter();
   }
   if (sleepAt && Date.now() >= sleepAt) { sleepAt = 0; $('sleep').value = '0'; return pause('Sleep timer ended.'); }
   highlight(true); save();
-  const u = new SpeechSynthesisUtterance(flat[ch][si]);
-  const v = voices.find(v => v.voiceURI === $('voice').value); if (v) { u.voice = v; u.lang = v.lang; }
-  u.rate = +$('rate').value; u.pitch = +$('pitch').value;
+  const text = flat[ch][si];
+  if (!speakable(text)) { si++; return speakCurrent(); }
+  if (isNeural()) return speakNeural(my, text);
+  const u = new SpeechSynthesisUtterance(text);
+  const v = browserVoices.find(v => v.voiceURI === $('voice').value); if (v) { u.voice = v; u.lang = v.lang; }
+  u.rate = Math.min(+$('rate').value, 2.5); u.pitch = +$('pitch').value;
   u.onend = () => { if (my !== token || !playing) return; si++; speakCurrent(); };
   u.onerror = e => { if (my !== token || !playing || e.error === 'interrupted' || e.error === 'canceled') return; si++; speakCurrent(); };
   synth.speak(u);
 }
+async function speakNeural(my, text) {
+  const e = engineName(), v = $('voice').value;
+  let res, waitT = setTimeout(() => { if (my === token) { status('Generating voice…'); stalls++; } }, 400);
+  try {
+    if (!NE.ready[e === 'kokoro' ? 'kokoro' : 'piper|' + v]) { status(`Loading ${e === 'kokoro' ? 'Kokoro' : 'Piper'} voice…`); await NE.load(e, v); }
+    if (my !== token) return;
+    prefetch(my);
+    res = await Promise.race([NE.gen(e, v, text, 0), new Promise((_, rej) => setTimeout(() => rej(new Error('Voice generation timed out')), 120000))]);
+  } catch (err) {
+    clearTimeout(waitT); if (my !== token || err.dropped) return;
+    console.error(err); failures++;
+    if (/timed out/.test(err.message)) NE.reset('timeout');
+    if (failures >= 3 || !NE.ready[e === 'kokoro' ? 'kokoro' : 'piper|' + v]) { failures = 0; fallbackToBrowser(`Neural voice failed (${err.message}).`); return speakCurrent(); }
+    si++; return speakCurrent();
+  }
+  clearTimeout(waitT); if (my !== token || !playing) return;
+  failures = 0; if (/Generating|Loading|Downloading/.test($('status').textContent)) status('');
+  maybeSlowBanner();
+  const pcm = pend[ch].has(si) ? concat([res.pcm, silence(res.sr, 0.35)]) : res.pcm;
+  const blob = new Blob([wavHeader(pcm.length, res.sr), floatToInt16(pcm)], { type: 'audio/wav' });
+  if (audioURL) URL.revokeObjectURL(audioURL); audioURL = URL.createObjectURL(blob);
+  ignorePauseUntil = performance.now() + 800;
+  audio.src = audioURL; audio.playbackRate = +$('rate').value; audio.preservesPitch = true; audioFor = { ch, si, my };
+  try { await audio.play(); } catch (err) { if (my === token) { pause('Tap Play to start audio (your browser blocked autoplay).'); } }
+}
+function concat(parts) { const n = parts.reduce((a, p) => a + p.length, 0), o = new Float32Array(n); let k = 0; for (const p of parts) { o.set(p, k); k += p.length; } return o; }
+audio.addEventListener('ended', () => { if (!audioFor || audioFor.my !== token || !playing) return; si++; speakCurrent(); });
+audio.addEventListener('pause', () => { // paused by OS / headphones / another app
+  if (audio.ended || performance.now() < ignorePauseUntil || !playing || !isNeural()) return;
+  playing = false; token++; setPlayBtn();
+});
+audio.addEventListener('error', () => { if (playing && isNeural() && audioFor && audioFor.my === token) { si++; speakCurrent(); } });
+function maybeSlowBanner() {
+  if (bannerShown || engineName() !== 'kokoro' || NE.stats.n < 4 || NE.rtf() < 0.95) return;
+  bannerShown = true; const b = $('banner'); b.classList.remove('hide');
+  b.innerHTML = `<span>Kokoro is generating slower than real time on this device (${(1 / NE.rtf()).toFixed(1)}× speed), so you'll hear pauses.</span>`;
+  const sw = document.createElement('button'); sw.className = 'btn sm'; sw.textContent = 'Switch to Piper (fast)';
+  sw.onclick = () => { b.classList.add('hide'); $('engine').value = 'piper'; $('engine').onchange(); };
+  const gp = document.createElement('button'); gp.className = 'btn sm'; gp.textContent = 'Try GPU';
+  gp.onclick = () => { b.classList.add('hide'); $('gpu').checked = true; $('gpu').onchange(); };
+  const x = document.createElement('button'); x.className = 'btn sm'; x.textContent = 'Keep Kokoro'; x.onclick = () => b.classList.add('hide');
+  b.append(sw); if (navigator.gpu && !useGPU()) b.append(gp); b.append(x);
+}
+
+function unlockAudio() { // must run inside the click handler (iOS/Safari)
+  if (audio.src) return;
+  audio.src = URL.createObjectURL(new Blob([wavHeader(2400, 24000), new Int16Array(2400)], { type: 'audio/wav' }));
+  audio.play().catch(() => {});
+}
 function play() {
   if (!book) { $('file').click(); return; }
-  if (!synth) return status('Speech synthesis is not supported in this browser.');
-  playing = true; $('play').textContent = '⏸'; synth.cancel(); speakCurrent(); status(''); mediaSession();
+  if (isNeural()) {
+    unlockAudio();
+    if (!confirmDownload(engineName(), $('voice').value)) { fallbackToBrowser('OK.'); }
+  }
+  if (!isNeural() && !synth) return status('Speech is not supported in this browser. Choose Kokoro or Piper.');
+  playing = true; setPlayBtn(); status('');
+  if (isNeural() && audioFor && audioFor.ch === ch && audioFor.si === si && audio.currentTime > 0 && !audio.ended && audio.src === audioURL) {
+    token++; audioFor.my = token; audio.play().catch(() => speakCurrent()); return;
+  }
+  if (synth) synth.cancel(); speakCurrent();
 }
-function pause(msg) { playing = false; token++; synth.cancel(); $('play').textContent = '▶'; if (msg) status(msg); }
-function stop() { pause(); }
+function pause(msg) {
+  playing = false; token++; if (synth) synth.cancel(); stopAudio(); setPlayBtn(); if (msg) status(msg);
+}
 function jump(c, s, resume = playing) {
-  if (!book) return; token++; synth.cancel();
+  if (!book) return; token++; if (synth) synth.cancel(); stopAudio(); audioFor = null;
   const changed = c !== ch; ch = Math.max(0, Math.min(c, flat.length - 1)); si = Math.max(0, Math.min(s, flat[ch].length - 1));
   if (changed) renderChapter(); else highlight(true); save();
-  if (resume) { playing = true; $('play').textContent = '⏸'; speakCurrent(); }
+  if (isNeural()) NE.clear();
+  if (resume) { playing = true; setPlayBtn(); speakCurrent(); }
 }
 function step(d) {
   if (!book) return; let c = ch, s = si + d;
@@ -415,15 +736,100 @@ function step(d) {
   else if (s >= flat[c].length) { if (c + 1 < flat.length) { c++; s = 0; } else s = flat[c].length - 1; }
   jump(c, s);
 }
-// Chrome pauses long-running synthesis; keep it alive
-setInterval(() => { if (playing && synth.speaking && !synth.paused) { synth.pause(); synth.resume(); } }, 10000);
-
-function mediaSession() {
-  if (!('mediaSession' in navigator) || !book) return;
-  navigator.mediaSession.metadata = new MediaMetadata({ title: book.chapters[ch].title, artist: book.name, album: 'Audiobook Reader' });
+// Chrome stops long-running speechSynthesis; keep it alive
+setInterval(() => { if (playing && !isNeural() && synth && synth.speaking && !synth.paused) { synth.pause(); synth.resume(); } }, 10000);
+if ('mediaSession' in navigator) {
   const h = { play, pause: () => pause(), previoustrack: () => jump(ch - 1, 0), nexttrack: () => jump(ch + 1, 0), seekbackward: () => step(-1), seekforward: () => step(1) };
   for (const [k, f] of Object.entries(h)) try { navigator.mediaSession.setActionHandler(k, f); } catch {}
 }
+
+// ---------- export ----------
+let exporting = null;
+async function exportAudio() {
+  if (!book) return alert('Open a book first.');
+  let e = engineName();
+  if (e === 'browser') {
+    if (!confirm('Device voices cannot be saved to a file. Use the free Piper voice for this export?')) return;
+    $('engine').value = 'piper'; prefs.set('engine', 'piper'); await fillVoices(); e = 'piper';
+  }
+  const v = $('voice').value; if (!v) return alert('Pick a voice first.');
+  if (!confirmDownload(e, v)) return;
+  const scope = $('exScope').value, fmt = $('exFmt').value, titles = $('exTitles').checked;
+  const chs = scope === 'ch' ? [ch] : scope === 'rest' ? flat.map((_, i) => i).filter(i => i >= ch) : flat.map((_, i) => i);
+  const perChapter = scope === 'chapters';
+  if (fmt === 'wav' && !perChapter && chs.length > 3 && !confirm('A WAV file of many chapters can be several GB. MP3 is about 10× smaller. Continue with WAV?')) return;
+  pause(); const job = exporting = { cancel: false };
+  $('exStart').disabled = true; $('exCancel').classList.remove('hide'); $('exBar').classList.remove('hide');
+  let wake = null; try { wake = await navigator.wakeLock?.request('screen'); } catch {}
+  const total = chs.reduce((n, c) => n + flat[c].length, 0); let done = 0; const t0 = Date.now();
+  const setP = msg => { $('exBar').firstElementChild.style.width = (100 * done / total).toFixed(1) + '%'; $('exStatus').textContent = msg; };
+  try {
+    setP('Loading voice…'); await NE.load(e, v); await NE.clear();
+    if (fmt === 'mp3') await loadScript(LIBS.lame);
+    const safe = s => s.replace(/[\\/:*?"<>|]+/g, '').trim().slice(0, 80) || 'audio';
+    let enc = null;
+    const newEnc = sr => fmt === 'mp3' ? { sr, lame: new lamejs.Mp3Encoder(1, sr, 64), parts: [] } : { sr, parts: [], n: 0 };
+    const push = (en, f) => { const i16 = floatToInt16(f); if (fmt === 'mp3') { for (let k = 0; k < i16.length; k += 11520) { const b = en.lame.encodeBuffer(i16.subarray(k, k + 11520)); if (b.length) en.parts.push(new Uint8Array(b)); } } else { en.parts.push(i16); en.n += i16.length; } };
+    const finish = (en, name) => {
+      let blob;
+      if (fmt === 'mp3') { const b = en.lame.flush(); if (b.length) en.parts.push(new Uint8Array(b)); blob = new Blob(en.parts, { type: 'audio/mpeg' }); }
+      else blob = new Blob([wavHeader(en.n, en.sr), ...en.parts], { type: 'audio/wav' });
+      const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = name + '.' + fmt; document.body.appendChild(a); a.click(); a.remove();
+      setTimeout(() => URL.revokeObjectURL(a.href), 120000);
+    };
+    for (const c of chs) {
+      const items = (titles ? [{ t: book.chapters[c].title, gap: 0.9 }] : []).concat(flat[c].map((t, i) => ({ t, gap: pend[c].has(i) ? 0.6 : 0.15, count: true })));
+      // pipeline: keep a few sentences generating ahead of the encoder
+      const reqs = []; let next = 0;
+      const fill = () => { while (next < items.length && reqs.length < 4) { const it = items[next++]; reqs.push({ it, p: speakable(it.t) ? NE.gen(e, v, it.t, 0, false) : Promise.resolve(null) }); } };
+      fill();
+      while (reqs.length) {
+        if (job.cancel) throw new Error('cancelled');
+        const { it, p } = reqs.shift(); fill();
+        let r = null; try { r = await p; } catch (err) { if (job.cancel) throw new Error('cancelled'); console.warn('skip', err); }
+        if (r) { if (!enc) enc = newEnc(r.sr); push(enc, r.pcm); push(enc, silence(enc.sr, it.gap)); }
+        if (it.count) done++;
+        const el = (Date.now() - t0) / 1000, eta = done ? el / done * (total - done) : 0;
+        setP(`Chapter ${c + 1}/${flat.length}: ${done}/${total} sentences · ${eta > 3600 ? (eta / 3600).toFixed(1) + ' h' : Math.ceil(eta / 60) + ' min'} left`);
+      }
+      if (perChapter && enc) { finish(enc, `${safe(book.name)} - ${String(c + 1).padStart(3, '0')} ${safe(book.chapters[c].title)}`); enc = null; }
+    }
+    if (enc) finish(enc, scope === 'ch' ? `${safe(book.name)} - ${safe(book.chapters[ch].title)}` : safe(book.name));
+    setP(`Done. Saved ${perChapter ? chs.length + ' files' : '1 file'} to your downloads.`);
+  } catch (err) {
+    await NE.clear();
+    $('exStatus').textContent = err.message === 'cancelled' ? 'Export cancelled.' : 'Export failed: ' + err.message;
+  } finally {
+    exporting = null; $('exStart').disabled = false; $('exCancel').classList.add('hide');
+    try { wake && wake.release(); } catch {}
+  }
+}
+
+// ---------- audio dialog ----------
+async function refreshDiag() {
+  const mt = window.crossOriginIsolated ? navigator.hardwareConcurrency || 1 : 1;
+  const r = NE.rtf();
+  $('diag').textContent = `CPU threads available to voices: ${mt}${window.crossOriginIsolated ? '' : ' (host this page over http/https with coi-sw.js beside it to use all cores)'}. GPU: ${navigator.gpu ? 'supported' : 'not available'}.` +
+    (NE.device.kokoro ? ` Kokoro running on ${NE.device.kokoro === 'webgpu' ? 'GPU' : 'CPU'}.` : '') +
+    (r ? ` Measured speed: ${(1 / r).toFixed(1)}× real time ${r < 1 ? '✓ smooth' : '(slower than playback, so expect pauses)'}.` : '')
+    + (location.protocol === 'file:' ? ' Note: this page was opened from disk, so downloaded voices cannot be saved and will download again next time. Host it on a website (e.g. GitHub Pages) to keep voices offline.' : '');
+  try {
+    const est = await navigator.storage.estimate();
+    $('storage').textContent = `This site is using ${(est.usage / 1e6).toFixed(0)} MB of storage. Downloaded: ${prefs.get('dl', []).map(k => k.replace('piper|', 'Piper ')).join(', ') || 'none yet'}.`;
+  } catch { $('storage').textContent = 'Storage info unavailable.'; }
+}
+$('audioBtn').onclick = () => { refreshDiag(); $('audioDlg').showModal(); };
+$('closeDlg').onclick = () => $('audioDlg').close();
+$('exStart').onclick = exportAudio;
+$('exCancel').onclick = () => { if (exporting) exporting.cancel = true; };
+$('clearModels').onclick = async () => {
+  if (!confirm('Delete all downloaded voices? They will download again when used.')) return;
+  pause();
+  try { await NE.call({ type: 'flush' }); } catch {}
+  try { for (const k of await caches.keys()) if (/transformers/i.test(k)) await caches.delete(k); } catch {}
+  NE.reset('cleared'); prefs.set('dl', []); refreshDiag(); fillVoices(); status('Downloaded voices deleted.');
+};
+$('gpu').onchange = () => { prefs.set('gpu', $('gpu').checked); pause(); NE.reset('restart'); NE.stats = { ms: 0, sec: 0, n: 0 }; bannerShown = false; refreshDiag(); status('Setting saved. Press Play.'); };
 
 // ---------- UI wiring ----------
 $('openBtn').onclick = $('openBtn2').onclick = () => $('file').click();
@@ -431,17 +837,31 @@ $('file').onchange = e => { const f = e.target.files[0]; if (f) openFile(f); e.t
 $('pasteBtn').onclick = async () => {
   let t = ''; try { t = await navigator.clipboard.readText(); } catch {}
   if (!t) t = prompt('Paste the text to read:') || ''; if (!t.trim()) return;
-  stop(); await loadBook({ id: 'paste|' + Date.now(), name: t.trim().slice(0, 40).replace(/\s+/g, ' ') + '…', chapters: splitPlain(t, 'Pasted text'), ch: 0, si: 0, updated: Date.now() });
+  pause(); await loadBook({ id: 'paste|' + Date.now(), name: t.trim().slice(0, 40).replace(/\s+/g, ' ') + '…', chapters: splitPlain(t, 'Pasted text'), ch: 0, si: 0, updated: Date.now() });
 };
 $('play').onclick = () => playing ? pause() : play();
 $('back').onclick = () => step(-1); $('fwd').onclick = () => step(1);
 $('prevCh').onclick = () => jump(si > 2 ? ch : ch - 1, 0); $('nextCh').onclick = () => jump(ch + 1, 0);
 $('seek').oninput = e => jump(ch, +e.target.value);
-$('text').onclick = e => { const s = e.target.closest('.s'); if (s) jump(ch, +s.dataset.i, true); };
-$('voice').onchange = e => { prefs.set('voice', e.target.value); if (playing) jump(ch, si); };
-$('rate').oninput = e => { $('rateV').textContent = (+e.target.value).toFixed(1) + '×'; prefs.set('rate', e.target.value); };
-$('rate').onchange = () => { if (playing) jump(ch, si); };
-$('pitch').onchange = e => { prefs.set('pitch', e.target.value); if (playing) jump(ch, si); };
+$('text').onclick = e => { const s = e.target.closest('.s'); if (s) { if (isNeural()) unlockAudio(); jump(ch, +s.dataset.i, true); } };
+$('engine').onchange = () => {
+  const was = playing; pause(); prefs.set('engine', engineName()); NE.clear(); NE.stats = { ms: 0, sec: 0, n: 0 }; bannerShown = false; $('banner').classList.add('hide');
+  fillVoices().then(() => { if (was) play(); });
+};
+$('voice').onchange = e => { prefs.set('voice.' + engineName(), e.target.value); if (playing) jump(ch, si, true); };
+$('sample').onclick = async () => {
+  const e = engineName(), v = $('voice').value, txt = 'Hello! This is how I sound when reading your books.';
+  pause();
+  if (e === 'browser') { const u = new SpeechSynthesisUtterance(txt); const bv = browserVoices.find(x => x.voiceURI === v); if (bv) u.voice = bv; u.rate = +$('rate').value; u.pitch = +$('pitch').value; synth && synth.speak(u); return; }
+  unlockAudio(); if (!confirmDownload(e, v)) return;
+  try { status('Preparing sample…'); await NE.load(e, v); const r = await NE.gen(e, v, txt);
+    if (audioURL) URL.revokeObjectURL(audioURL); audioURL = URL.createObjectURL(new Blob([wavHeader(r.pcm.length, r.sr), floatToInt16(r.pcm)], { type: 'audio/wav' }));
+    audioFor = null; audio.src = audioURL; audio.playbackRate = +$('rate').value; await audio.play(); status('');
+  } catch (err) { status('Could not play sample: ' + err.message); }
+};
+$('rate').oninput = e => { $('rateV').textContent = (+e.target.value).toFixed(1) + '×'; prefs.set('rate', e.target.value); audio.playbackRate = +e.target.value; };
+$('rate').onchange = () => { if (playing && !isNeural()) jump(ch, si); };
+$('pitch').onchange = e => { prefs.set('pitch', e.target.value); if (playing && !isNeural()) jump(ch, si); };
 $('fs').oninput = e => { document.documentElement.style.setProperty('--fs', e.target.value + 'px'); prefs.set('fs', e.target.value); };
 $('sleep').onchange = e => { const v = e.target.value; sleepEndCh = v === 'ch'; sleepAt = (v !== 'ch' && +v) ? Date.now() + v * 60000 : 0; status(v === '0' ? 'Sleep timer off.' : 'Sleep timer set.'); };
 $('themeBtn').onclick = () => { const r = document.documentElement, dark = getComputedStyle(r).getPropertyValue('--bg').trim() === '#121314'; r.dataset.theme = dark ? 'light' : 'dark'; prefs.set('theme', r.dataset.theme); };
@@ -451,23 +871,36 @@ const drop = $('drop');
 ['dragenter', 'dragover'].forEach(t => document.addEventListener(t, e => { e.preventDefault(); drop.classList.add('over'); }));
 ['dragleave', 'drop'].forEach(t => document.addEventListener(t, e => { e.preventDefault(); drop.classList.remove('over'); }));
 document.addEventListener('drop', e => { const f = e.dataTransfer.files[0]; if (f) openFile(f); });
-
 document.addEventListener('keydown', e => {
   if (/INPUT|SELECT|TEXTAREA/.test(e.target.tagName) && e.target.type !== 'range') return;
+  if ($('audioDlg').open) return;
   if (e.code === 'Space') { e.preventDefault(); playing ? pause() : play(); }
   else if (e.key === 'ArrowLeft') { e.preventDefault(); e.shiftKey ? jump(ch - 1, 0) : step(-1); }
   else if (e.key === 'ArrowRight') { e.preventDefault(); e.shiftKey ? jump(ch + 1, 0) : step(1); }
 });
-window.addEventListener('beforeunload', () => synth && synth.cancel());
+window.addEventListener('beforeunload', e => { if (synth) synth.cancel(); if (exporting) { e.preventDefault(); e.returnValue = ''; } });
+window.addEventListener('unhandledrejection', e => { if (e.reason && e.reason.dropped) e.preventDefault(); });
 
-// restore prefs
+// ---------- init ----------
 $('rate').value = prefs.get('rate', 1); $('rateV').textContent = (+$('rate').value).toFixed(1) + '×';
 $('pitch').value = prefs.get('pitch', 1); $('fs').value = prefs.get('fs', 20);
 document.documentElement.style.setProperty('--fs', $('fs').value + 'px');
 const th = prefs.get('theme', null); if (th) document.documentElement.dataset.theme = th;
-if (synth) { loadVoices(); synth.onvoiceschanged = loadVoices; } else status('This browser has no text-to-speech support.');
+const mobile = navigator.userAgentData ? navigator.userAgentData.mobile : /Mobi|Android|iPhone|iPad/i.test(navigator.userAgent);
+$('gpu').checked = prefs.get('gpu', false);
+if (prefs.get('gpu', null) === null && navigator.gpu && !mobile) { // default on only for a real (non-software) GPU
+  navigator.gpu.requestAdapter().then(a => { if (a && !(a.isFallbackAdapter || (a.info && a.info.isFallbackAdapter))) $('gpu').checked = true; }).catch(() => {});
+}
+const canNeural = typeof Worker !== 'undefined' && typeof WebAssembly !== 'undefined';
+if (!canNeural) { [...$('engine').options].forEach(o => { if (o.value !== 'browser') o.disabled = true; }); }
+$('engine').value = canNeural ? prefs.get('engine', 'kokoro') : 'browser';
+if (synth) synth.onvoiceschanged = () => { if (engineName() === 'browser') fillVoices(); };
+fillVoices();
+try { navigator.storage && navigator.storage.persist && navigator.storage.persist(); } catch {}
 if (window.innerWidth <= 760) $('side').classList.add('hide');
 renderLib();
+// test hook (harmless): exposes internals for automated checks
+window.__abr = { NE, get state() { return { ch, si, playing, engine: engineName() }; } };
 })();
 </script>
 </body>
