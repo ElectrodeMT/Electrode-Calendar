@@ -12,6 +12,10 @@ Open `index.html` in a browser, drop in any file (PDF, EPUB, DOCX, ODT, RTF, TXT
 
 Neural voices run entirely in your browser (no account, no API key, text never leaves your device).
 
+## Our own voices + Storyteller style
+- **Storyteller / Raconteur / Wit** are original voices created by blending Kokoro's built-in voice styles (free, offline, not a copy of any real person). Samples: `samples/`.
+- **Storyteller style** (default) shapes narration with timing measured from professional audiobook narration: ~0.12 s breaths, ~0.3 s between sentences, ~0.65–0.7 s at paragraphs and dialogue turns, tight staccato runs ("The rain fell. The kettle sulked."), 0.4 s after questions, 0.5 s after trailing-off lines, and an extra held beat before a short closing line (comic/dramatic timing). Short punchy lines are read slightly slower, long descriptive runs slightly faster. Switch to **Plain** anytime.
+
 ## ElevenLabs notes
 - The key is stored only in this browser (localStorage) and sent only to api.elevenlabs.io. Use a restricted key with a credit limit.
 - Every generated sentence is saved on the device, so replays and exports of already-heard text cost no credits.
@@ -29,7 +33,7 @@ Serve the folder over http(s) (e.g. GitHub Pages, or `python3 -m http.server` in
 - avoids re-downloading every visit (opening the file directly from disk works, but cannot cache voices).
 
 ## Tests
-24 automated tests (UI, formats, playback, export, stress, chaos) using Playwright + Chromium:
+25 automated tests (UI, formats, playback, export, stress, chaos) using Playwright + Chromium:
 ```
 cd book-reader && python3 -m http.server 8766 &   # serve the app
 cd tests && python3 gen.py && node suite.cjs      # generate fixtures, run suite

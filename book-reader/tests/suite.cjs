@@ -145,7 +145,7 @@ add('Function', '14. Neural engine failures fall back to device voices', async p
   return await p.textContent('#status');
 });
 add('Function', '15. Export: chapter WAV has exact expected length', async p => {
-  await open(p, 'book.txt'); await testEngine(p); await p.click('#audioBtn'); await p.selectOption('#exScope', 'ch'); await p.selectOption('#exFmt', 'wav');
+  await open(p, 'book.txt'); await p.selectOption('#style', 'plain'); await testEngine(p); await p.click('#audioBtn'); await p.selectOption('#exScope', 'ch'); await p.selectOption('#exFmt', 'wav');
   const [d] = await Promise.all([p.waitForEvent('download', { timeout: 30000 }), p.click('#exStart')]);
   const buf = fs.readFileSync(await d.path()); const samples = buf.readUInt32LE(40) / 2;
   const gaps = [0.9, 0.15, 0.6, 0.6].map(g => Math.round(24000 * g)); const expect = 4 * 3600 + gaps.reduce((a, b) => a + b);
@@ -153,7 +153,7 @@ add('Function', '15. Export: chapter WAV has exact expected length', async p => 
   return d.suggestedFilename() + ' ' + samples + ' samples';
 });
 add('Function', '16. Export survives user playing/seeking during export (no dropped sentences)', async p => {
-  await open(p, 'book.txt'); await testEngine(p, 'slow'); await p.click('#audioBtn'); await p.selectOption('#exScope', 'book'); await p.selectOption('#exFmt', 'wav');
+  await open(p, 'book.txt'); await p.selectOption('#style', 'plain'); await testEngine(p, 'slow'); await p.click('#audioBtn'); await p.selectOption('#exScope', 'book'); await p.selectOption('#exFmt', 'wav');
   const dlP = p.waitForEvent('download', { timeout: 60000 }); await p.click('#exStart'); await p.waitForTimeout(800);
   await p.keyboard.press('Escape'); for (let i = 0; i < 4; i++) { await p.click('#fwd'); await p.waitForTimeout(150); } await p.click('#play'); await p.waitForTimeout(400); await p.click('#play');
   const d = await dlP; const samples = fs.readFileSync(await d.path()).readUInt32LE(40) / 2;
@@ -204,6 +204,21 @@ add('Stress', '20. Chaos: 400 random clicks/seeks/keys while neural audio plays'
   return JSON.stringify(s);
 });
 
+add('Style', '25. Storyteller timing rules (pauses, staccato, questions, beats) + export uses them', async p => {
+  fs.writeFileSync(F('story.txt'), 'Chapter One\n\nIt was, by all accounts, a perfectly ordinary Tuesday. The rain fell. The kettle sulked. And Arthur, aged sixty-three, decided that today he would finally become an adventurer.\n\n"Where are you going?" asked his wife.\n\n"Out," said Arthur.\n\nHe considered this. Adventurers, he was fairly certain, did not carry umbrellas. Arthur owned none of these things... but he did have a very nice umbrella and a hat.\n\nSo he took it.\n');
+  await open(p, 'story.txt'); assert(await p.$eval('#style', s => s.value) === 'story', 'Storyteller is not the default');
+  const g = await p.evaluate(() => { const out = {}; const sents = [...document.querySelectorAll('#text .s')].map(x => x.textContent.trim()); sents.forEach((t, i) => out[t.slice(0, 24)] = +__abr.styleGap(__abr.state.ch, i).toFixed(2)); return { out, rate: [__abr.styleRate('So he took it.'), __abr.styleRate('It was, by all accounts, a perfectly ordinary Tuesday.')] }; });
+  const o = g.out, want = { 'It was, by all accounts,': 0.3, 'The rain fell.': 0.18, 'The kettle sulked.': 0.3, 'And Arthur, aged sixty-t': 0.7, '"Where are you going?" a': 0.7, '"Out," said Arthur.': 0.65, 'He considered this.': 0.3, 'Arthur owned none of the': 0.95, 'So he took it.': 1.1 };
+  for (const [k, v] of Object.entries(want)) assert(o[k] === v, `gap after "${k}" = ${o[k]}, expected ${v}. All: ${JSON.stringify(o)}`);
+  assert(g.rate[0] < 1 && g.rate[1] === 1, 'rate shaping ' + g.rate);
+  await testEngine(p); await p.click('#audioBtn'); await p.selectOption('#exScope', 'ch'); await p.selectOption('#exFmt', 'wav'); await p.uncheck('#exTitles');
+  const [d] = await Promise.all([p.waitForEvent('download', { timeout: 30000 }), p.click('#exStart')]);
+  const samples = fs.readFileSync(await d.path()).readUInt32LE(40) / 2, n = Object.keys(o).length;
+  const exp = n * 3600 + Object.values(o).reduce((a, x) => a + Math.round(24000 * x), 0);
+  assert(samples === exp, `storyteller export ${samples} samples, expected ${exp}`);
+  return `gaps ok (${n} sentences), export ${samples} samples`;
+});
+
 // ---------- ElevenLabs (mocked API: no real credits used) ----------
 function wavBuf(n, sr = 44100) { const b = Buffer.alloc(44 + n * 2); b.write('RIFF', 0); b.writeUInt32LE(36 + n * 2, 4); b.write('WAVEfmt ', 8); b.writeUInt32LE(16, 16); b.writeUInt16LE(1, 20); b.writeUInt16LE(1, 22); b.writeUInt32LE(sr, 24); b.writeUInt32LE(sr * 2, 28); b.writeUInt16LE(2, 32); b.writeUInt16LE(16, 34); b.write('data', 36); b.writeUInt32LE(n * 2, 40); return b; }
 async function mockEleven(p, mode = {}) {
@@ -249,7 +264,7 @@ add('ElevenLabs', '23. Rate limiting (429) is retried automatically; bad key rej
   assert((await st(p)).engine === 'eleven', 'fell back instead of retrying'); return `${p.el.tts} TTS calls incl. 2 retried; bad key: "${bad.slice(0, 50)}"`;
 });
 add('ElevenLabs', '24. No key → asks for key (no silent switch); export length exact; free preview', async p => {
-  await mockEleven(p); await open(p, 'book.txt'); await p.selectOption('#engine', 'eleven'); await p.waitForTimeout(200);
+  await mockEleven(p); await open(p, 'book.txt'); await p.selectOption('#style', 'plain'); await p.selectOption('#engine', 'eleven'); await p.waitForTimeout(200);
   await p.click('#play'); await p.waitForTimeout(300);
   assert(await p.$eval('#audioDlg', d => d.open), 'key dialog not opened'); assert((await st(p)).engine === 'eleven' && !(await st(p)).playing, 'engine switched or playing without key');
   await p.fill('#elKey', 'good-key'); await p.click('#elSave'); await p.waitForFunction(() => document.getElementById('voice').value === 'JBFqnCBsd6RMkjVDRZzb', null, { timeout: 10000 });

@@ -103,6 +103,7 @@ dialog p{margin:6px 0;font-size:14px;color:var(--muted)}
     <label class="opt">Speed <input type="range" id="rate" min="0.5" max="3" step="0.1" value="1"><span id="rateV">1.0×</span></label>
     <label class="opt" id="pitchL">Pitch <input type="range" id="pitch" min="0.5" max="1.5" step="0.1" value="1"></label>
     <label class="opt">Text <input type="range" id="fs" min="14" max="32" step="1" value="20"></label>
+    <label class="opt" title="Storyteller: pauses, rhythm and comic timing modelled on professional audiobook narration">Style <select id="style"><option value="story">Storyteller</option><option value="plain">Plain</option></select></label>
     <label class="opt">Sleep <select id="sleep"><option value="0">Off</option><option value="5">5 min</option><option value="15">15 min</option><option value="30">30 min</option><option value="60">60 min</option><option value="ch">End of chapter</option></select></label>
   </div>
   <div class="bar hide" id="dlBar"><i></i></div>
@@ -151,6 +152,22 @@ const PIPER_PATHS = {
   piperData: 'https://cdn.jsdelivr.net/npm/@diffusionstudio/piper-wasm@1.0.0/build/piper_phonemize.data',
   piperWasm: 'https://cdn.jsdelivr.net/npm/@diffusionstudio/piper-wasm@1.0.0/build/piper_phonemize.wasm'
 };
+// Original voices made by blending Kokoro's built-in voice styles (not a copy of any real person).
+const BLENDS = {
+  bm_storyteller_v1: { name: 'Storyteller (our own): warm, steady British narrator', mix: { bm_george: 0.5, bm_fable: 0.3, am_michael: 0.2 } },
+  bm_raconteur_v1: { name: 'Raconteur (our own): deeper, richer British narrator', mix: { bm_fable: 0.45, bm_george: 0.3, am_onyx: 0.25 } },
+  bm_wit_v1: { name: 'Wit (our own): lighter, playful British narrator', mix: { bm_lewis: 0.4, bm_george: 0.4, am_puck: 0.2 } }
+};
+const VOICE_BASE = 'https://huggingface.co/onnx-community/Kokoro-82M-v1.0-ONNX/resolve/main/voices/';
+const _fetch = self.fetch.bind(self);
+self.fetch = async (input, init) => {
+  const u = String((input && input.url) || input), id = u.startsWith(VOICE_BASE) ? u.slice(VOICE_BASE.length).replace(/\.bin$/, '') : '';
+  if (!BLENDS[id]) return _fetch(input, init);
+  const parts = await Promise.all(Object.entries(BLENDS[id].mix).map(async ([v, w]) => [new Float32Array(await (await _fetch(VOICE_BASE + v + '.bin')).arrayBuffer()), w]));
+  const out = new Float32Array(parts[0][0].length); for (const [a, w] of parts) for (let i = 0; i < out.length; i++) out[i] += a[i] * w;
+  return new Response(out.buffer, { status: 200, headers: { 'Content-Type': 'application/octet-stream' } });
+};
+function allowBlends(k) { const orig = k._validate_voice.bind(k); k._validate_voice = v => BLENDS[v] ? v[0] : orig(v); return k; }
 let kokoro = null, kokoroP = null, kokoroDevice = '', piperMod = null, piperSess = null, piperVoice = '', piperP = null;
 const queue = []; let running = false, seq = 0;
 const post = (m, t) => self.postMessage(m, t || []);
@@ -165,11 +182,11 @@ function getKokoro(gpu) {
         if (self.navigator.gpu && await navigator.gpu.requestAdapter()) {
           const k = await KokoroTTS.from_pretrained(KOKORO_ID, { dtype: 'fp32', device: 'webgpu', progress_callback: progress });
           await k.generate('Hi.', { voice: 'af_heart' }); // verify the GPU path really works
-          kokoro = k; kokoroDevice = 'webgpu';
+          kokoro = allowBlends(k); kokoroDevice = 'webgpu';
         }
       } catch (e) { post({ type: 'log', msg: 'WebGPU unavailable, using CPU: ' + (e && e.message) }); }
     }
-    if (!kokoro) { kokoro = await KokoroTTS.from_pretrained(KOKORO_ID, { dtype: 'q8', device: 'wasm', progress_callback: progress }); kokoroDevice = 'wasm'; }
+    if (!kokoro) { kokoro = allowBlends(await KokoroTTS.from_pretrained(KOKORO_ID, { dtype: 'q8', device: 'wasm', progress_callback: progress })); kokoroDevice = 'wasm'; }
     return kokoro;
   })().catch(e => { kokoroP = null; throw e; });
 }
@@ -206,8 +223,8 @@ function pump() {
     const t0 = performance.now();
     try {
       let r;
-      if (j.engine === 'test') { await new Promise(r => setTimeout(r, j.voice === 'slow' ? 300 : 10)); if (j.voice === 'fail') throw new Error('test failure'); r = { pcm: new Float32Array(j.voice === 'long' ? 48000 : 3600), sr: 24000 }; } // silent engine for automated tests
-      else if (j.engine === 'kokoro') { const k = await getKokoro(j.gpu); const a = await k.generate(j.text, { voice: j.voice, speed: 1 }); r = { pcm: a.audio, sr: a.sampling_rate }; }
+      if (j.engine === 'test') { await new Promise(r => setTimeout(r, j.voice === 'slow' ? 300 : 10)); if (j.voice === 'fail') throw new Error('test failure'); r = { pcm: new Float32Array(j.voice === 'long' ? 48000 : 3600).fill(0.1), sr: 24000 }; } // silent engine for automated tests
+      else if (j.engine === 'kokoro') { const k = await getKokoro(j.gpu); const a = await k.generate(j.text, { voice: j.voice, speed: j.speed || 1 }); r = { pcm: a.audio, sr: a.sampling_rate }; }
       else { const s = await getPiper(j.voice); r = wavToPcm(await (await s.predict(j.text)).arrayBuffer()); }
       const pcm = new Float32Array(r.pcm);
       post({ type: 'audio', id: j.id, pcm, sr: r.sr, ms: performance.now() - t0 }, [pcm.buffer]);
@@ -223,7 +240,7 @@ self.onmessage = async ({ data: m }) => {
       if (m.engine === 'test') post({ type: 'ok', id: m.id, device: 'test' });
       else if (m.engine === 'kokoro') {
         const k = await getKokoro(m.gpu);
-        post({ type: 'ok', id: m.id, device: kokoroDevice, voices: Object.entries(k.voices).map(([id, v]) => ({ id, ...v })) });
+        post({ type: 'ok', id: m.id, device: kokoroDevice, voices: Object.entries(BLENDS).map(([id, b]) => ({ id, name: b.name, own: true })).concat(Object.entries(k.voices).map(([id, v]) => ({ id, ...v }))) });
       } else { await getPiper(m.voice); post({ type: 'ok', id: m.id, device: 'wasm' }); }
     }
     else if (m.type === 'voices') {
@@ -311,7 +328,7 @@ function sentences(p) {
   let out = segmenter ? [...segmenter.segment(p)].map(x => x.segment.trim())
                       : (p.match(/[^.!?。！？]+[.!?。！？]+["'”’)\]]*|\S[^.!?。！？]*$/g) || [p]).map(x => x.trim());
   out = out.filter(Boolean).reduce((a, s) => {
-    if (a.length && /\b(Mr|Mrs|Ms|Dr|Prof|St|Sr|Jr|vs|etc|e\.g|i\.e|No|Fig|[A-Z])\.$/.test(a[a.length - 1])) a[a.length - 1] += ' ' + s; else a.push(s);
+    if (a.length && (/\b(Mr|Mrs|Ms|Dr|Prof|St|Sr|Jr|vs|etc|e\.g|i\.e|No|Fig|[A-Z])\.$/.test(a[a.length - 1]) || /^\p{Ll}/u.test(s))) a[a.length - 1] += ' ' + s; else a.push(s); // keep abbreviations and '"Hi?" she asked' together
     return a; }, []);
   const res = [];
   for (let s of out) {
@@ -573,9 +590,10 @@ const NE = {
     return p;
   },
   gen(engine, voice, text, pri = 0, cache = true, owner = 'play') {
-    const k = engine + '|' + voice + '|' + text;
+    const speed = engine === 'kokoro' && storyMode() ? 1.1 : 1; // Storyteller pace: ~150 wpm like pro narration
+    const k = engine + '|' + voice + '|' + speed + '|' + text;
     if (cache && this.cache.has(k)) return this.cache.get(k);
-    const p = engine === 'eleven' ? EL.gen(voice, text, owner) : this.call({ type: 'gen', engine, voice, text, pri, owner, gpu: useGPU() }).then(m => {
+    const p = engine === 'eleven' ? EL.gen(voice, text, owner) : this.call({ type: 'gen', engine, voice, text, pri, owner, speed, gpu: useGPU() }).then(m => {
       const sec = m.pcm.length / m.sr; this.stats.ms += m.ms; this.stats.sec += sec; this.stats.n++;
       return { pcm: m.pcm, sr: m.sr };
     });
@@ -692,9 +710,47 @@ function wavHeader(samples, sr) {
 const silence = (sr, sec) => new Float32Array(Math.round(sr * sec));
 const speakable = t => /[\p{L}\p{N}]/u.test(t);
 
+// ---------- "Storyteller" narration style ----------
+// Measured from a 40 s professional narration sample: three pause tiers (~0.12 s breath, ~0.3 s sentence,
+// ~0.65 s paragraph / dialogue turn), quick delivery inside phrases (~195 wpm) balanced by deliberate pauses
+// (~150 wpm overall), staccato runs of short sentences kept tight, and a held beat before a short closing line.
+const storyMode = () => $('style').value === 'story';
+const wordsIn = t => (t.match(/[\p{L}\p{N}'’-]+/gu) || []).length;
+const endsWith = (t, re) => re.test(t.replace(/["”’'»)\]]+$/, ''));
+function styleGap(c, s) {
+  const t = flat[c][s], nxt = s + 1 < flat[c].length ? flat[c][s + 1] : null, para = pend[c].has(s);
+  if (!storyMode()) return para ? 0.35 : 0;
+  if (!nxt) return 1.1;                                                          // end of chapter
+  let g;
+  if (para) g = /^["“'‘«]/.test(nxt) || /["”'’»]$/.test(t) ? 0.7 : 0.65;          // paragraph / dialogue turn
+  else if (endsWith(t, /(\.\.\.|…|—|–|-)$/)) g = 0.5;                            // trailing off: hold a beat
+  else if (endsWith(t, /\?$/)) g = 0.4;                                          // let a question land
+  else if (endsWith(t, /[.!]$/)) g = wordsIn(t) <= 5 && wordsIn(nxt) <= 6 ? 0.18 : 0.3; // staccato runs stay tight
+  else g = 0.12;                                                                 // long sentence split mid-way: breath
+  const nxtEndsPara = pend[c].has(s + 1);
+  if (wordsIn(nxt) <= 6 && nxtEndsPara && wordsIn(t) >= 8 && !/^["“'‘]/.test(nxt)) g += 0.3; // comic/dramatic beat before a short closing line
+  return g;
+}
+function styleRate(t) {   // gentle pace shaping inside the user's chosen speed
+  if (!storyMode()) return 1;
+  const w = wordsIn(t);
+  if (w <= 4) return 0.92;                      // short punchy lines: slower, weightier
+  if (endsWith(t, /!$/)) return 1.03;
+  if (w >= 28) return 1.04;                     // long descriptive runs: keep momentum
+  return 1;
+}
+function trimSilence(pcm, sr) {
+  let a = 0, b = pcm.length - 1; const th = 0.008;
+  while (a < b && Math.abs(pcm[a]) < th) a++;
+  while (b > a && Math.abs(pcm[b]) < th) b--;
+  const pad = Math.round(sr * 0.03);
+  return pcm.subarray(Math.max(0, a - pad), Math.min(pcm.length, b + pad + 1));
+}
+
 // ---------- voices UI ----------
 let browserVoices = [], piperList = null, kokoroList = null;
-const KOKORO_FALLBACK = ['af_heart','af_bella','af_nicole','af_aoede','af_kore','af_sarah','af_nova','af_sky','af_alloy','af_jessica','af_river','am_michael','am_fenrir','am_puck','am_echo','am_eric','am_liam','am_onyx','am_adam','am_santa','bf_emma','bf_isabella','bf_alice','bf_lily','bm_george','bm_fable','bm_lewis','bm_daniel'].map(id => ({ id }));
+const OWN_VOICES = [{ id: 'bm_storyteller_v1', name: 'Storyteller (our own): warm, steady British narrator', own: true }, { id: 'bm_raconteur_v1', name: 'Raconteur (our own): deeper, richer British narrator', own: true }, { id: 'bm_wit_v1', name: 'Wit (our own): lighter, playful British narrator', own: true }];
+const KOKORO_FALLBACK = OWN_VOICES.concat(['af_heart','af_bella','af_nicole','af_aoede','af_kore','af_sarah','af_nova','af_sky','af_alloy','af_jessica','af_river','am_michael','am_fenrir','am_puck','am_echo','am_eric','am_liam','am_onyx','am_adam','am_santa','bf_emma','bf_isabella','bf_alice','bf_lily','bm_george','bm_fable','bm_lewis','bm_daniel'].map(id => ({ id })));
 function langPrefix() { return (navigator.language || 'en').slice(0, 2).toLowerCase(); }
 async function fillVoices() {
   const e = engineName(), sel = $('voice'), saved = prefs.get('voice.' + e, '');
@@ -718,10 +774,10 @@ async function fillVoices() {
     showCredits();
   } else if (e === 'kokoro') {
     const grade = g => 'ABCDF'.indexOf((g || 'C')[0]);
-    const list = (kokoroList || KOKORO_FALLBACK).slice().sort((a, b) => grade(a.overallGrade) - grade(b.overallGrade));
+    const list = (kokoroList || KOKORO_FALLBACK).slice().sort((a, b) => (b.own ? 1 : 0) - (a.own ? 1 : 0) || grade(a.overallGrade) - grade(b.overallGrade));
     const accent = id => id[0] === 'b' ? 'British' : 'American', sex = id => id[1] === 'f' ? 'female' : 'male';
-    list.forEach(v => sel.add(new Option(`${v.name || v.id.split('_')[1].replace(/^./, c => c.toUpperCase())}: ${accent(v.id)} ${sex(v.id)}${v.overallGrade ? ' · grade ' + v.overallGrade : ''}${v.traits ? ' ' + v.traits : ''}`, v.id)));
-    sel.value = list.some(v => v.id === saved) ? saved : 'af_heart';
+    list.forEach(v => sel.add(new Option(v.own ? '★ ' + v.name : `${v.name || v.id.split('_')[1].replace(/^./, c => c.toUpperCase())}: ${accent(v.id)} ${sex(v.id)}${v.overallGrade ? ' · grade ' + v.overallGrade : ''}${v.traits ? ' ' + v.traits : ''}`, v.id)));
+    sel.value = list.some(v => v.id === saved) ? saved : 'bm_storyteller_v1';
   } else {
     sel.add(new Option('Loading voice list…', '')); sel.disabled = true;
     try { if (!piperList) piperList = (await NE.call({ type: 'voices' })).voices; }
@@ -777,8 +833,9 @@ async function speakCurrent() {
   if (isNeural()) return speakNeural(my, text);
   const u = new SpeechSynthesisUtterance(text);
   const v = browserVoices.find(v => v.voiceURI === $('voice').value); if (v) { u.voice = v; u.lang = v.lang; }
-  u.rate = Math.min(+$('rate').value, 2.5); u.pitch = +$('pitch').value;
-  u.onend = () => { if (my !== token || !playing) return; si++; speakCurrent(); };
+  u.rate = Math.min(+$('rate').value * styleRate(text), 2.5); u.pitch = +$('pitch').value;
+  const pauseMs = storyMode() ? Math.max(0, styleGap(ch, si) - 0.15) * 1000 : 0; // device voices add ~0.15 s themselves
+  u.onend = () => { if (my !== token || !playing) return; si++; pauseMs ? setTimeout(() => { if (my === token && playing) speakCurrent(); }, pauseMs) : speakCurrent(); };
   u.onerror = e => { if (my !== token || !playing || e.error === 'interrupted' || e.error === 'canceled') return; si++; speakCurrent(); };
   synth.speak(u);
 }
@@ -804,11 +861,12 @@ async function speakNeural(my, text) {
   clearTimeout(waitT); if (my !== token || !playing) return;
   failures = 0; if (/Generating|Loading|Downloading/.test($('status').textContent)) status('');
   maybeSlowBanner();
-  const pcm = pend[ch].has(si) ? concat([res.pcm, silence(res.sr, 0.35)]) : res.pcm;
+  const gap = styleGap(ch, si), body = storyMode() ? trimSilence(res.pcm, res.sr) : res.pcm;
+  const pcm = gap ? concat([body, silence(res.sr, gap)]) : body;
   const blob = new Blob([wavHeader(pcm.length, res.sr), floatToInt16(pcm)], { type: 'audio/wav' });
   if (audioURL) URL.revokeObjectURL(audioURL); audioURL = URL.createObjectURL(blob);
   ignorePauseUntil = performance.now() + 800;
-  audio.src = audioURL; audio.playbackRate = +$('rate').value; audio.preservesPitch = true; audioFor = { ch, si, my };
+  audio.src = audioURL; audio.playbackRate = +$('rate').value * styleRate(text); audio.preservesPitch = true; audioFor = { ch, si, my };
   try { await audio.play(); } catch (err) { if (my === token) { pause('Tap Play to start audio (your browser blocked autoplay).'); } }
 }
 function concat(parts) { const n = parts.reduce((a, p) => a + p.length, 0), o = new Float32Array(n); let k = 0; for (const p of parts) { o.set(p, k); k += p.length; } return o; }
@@ -913,7 +971,8 @@ async function exportAudio() {
       setTimeout(() => URL.revokeObjectURL(a.href), 120000);
     };
     for (const c of chs) {
-      const items = (titles ? [{ t: book.chapters[c].title, gap: 0.9 }] : []).concat(flat[c].map((t, i) => ({ t, gap: pend[c].has(i) ? 0.6 : 0.15, count: true })));
+      const story = storyMode();
+      const items = (titles ? [{ t: book.chapters[c].title, gap: story ? 1.1 : 0.9 }] : []).concat(flat[c].map((t, i) => ({ t, gap: story ? styleGap(c, i) : pend[c].has(i) ? 0.6 : 0.15, count: true })));
       // pipeline: keep a few sentences generating ahead of the encoder
       const reqs = []; let next = 0;
       const fill = () => { while (next < items.length && reqs.length < 4) { const it = items[next++]; reqs.push({ it, p: speakable(it.t) ? NE.gen(e, v, it.t, 0, false, 'export') : Promise.resolve(null) }); } };
@@ -922,7 +981,7 @@ async function exportAudio() {
         if (job.cancel) throw new Error('cancelled');
         const { it, p } = reqs.shift(); fill();
         let r = null; try { r = await p; } catch (err) { if (job.cancel) throw new Error('cancelled'); if (err.fatal) throw err; console.warn('skip', err); }
-        if (r) { if (!enc) enc = newEnc(r.sr); push(enc, r.pcm); push(enc, silence(enc.sr, it.gap)); }
+        if (r) { if (!enc) enc = newEnc(r.sr); push(enc, story ? trimSilence(r.pcm, r.sr) : r.pcm); push(enc, silence(enc.sr, it.gap)); }
         if (it.count) done++;
         const el = (Date.now() - t0) / 1000, eta = done ? el / done * (total - done) : 0;
         setP(`Chapter ${c + 1}/${flat.length}: ${done}/${total} sentences · ${eta > 3600 ? (eta / 3600).toFixed(1) + ' h' : Math.ceil(eta / 60) + ' min'} left`);
@@ -1016,6 +1075,7 @@ $('rate').oninput = e => { $('rateV').textContent = (+e.target.value).toFixed(1)
 $('rate').onchange = () => { if (playing && !isNeural()) jump(ch, si); };
 $('pitch').onchange = e => { prefs.set('pitch', e.target.value); if (playing && !isNeural()) jump(ch, si); };
 $('fs').oninput = e => { document.documentElement.style.setProperty('--fs', e.target.value + 'px'); prefs.set('fs', e.target.value); };
+$('style').onchange = () => { prefs.set('style', $('style').value); status($('style').value === 'story' ? 'Storyteller style: natural pauses, rhythm and timing.' : 'Plain style.'); };
 $('sleep').onchange = e => { const v = e.target.value; sleepEndCh = v === 'ch'; sleepAt = (v !== 'ch' && +v) ? Date.now() + v * 60000 : 0; status(v === '0' ? 'Sleep timer off.' : 'Sleep timer set.'); };
 $('themeBtn').onclick = () => { const r = document.documentElement, dark = getComputedStyle(r).getPropertyValue('--bg').trim() === '#121314'; r.dataset.theme = dark ? 'light' : 'dark'; prefs.set('theme', r.dataset.theme); };
 $('tocToggle').onclick = () => $('side').classList.toggle('hide');
@@ -1043,6 +1103,7 @@ document.documentElement.style.setProperty('--fs', $('fs').value + 'px');
 const th = prefs.get('theme', null); if (th) document.documentElement.dataset.theme = th;
 const mobile = navigator.userAgentData ? navigator.userAgentData.mobile : /Mobi|Android|iPhone|iPad/i.test(navigator.userAgent);
 $('gpu').checked = prefs.get('gpu', false);
+$('style').value = prefs.get('style', 'story');
 { const m = prefs.get('elModel', null); if (m) { if (![...$('elModel').options].some(o => o.value === m)) $('elModel').add(new Option(m, m)); $('elModel').value = m; } }
 elKeyState();
 if (prefs.get('gpu', null) === null && navigator.gpu && !mobile) { // default on only for a real (non-software) GPU
@@ -1057,7 +1118,7 @@ try { navigator.storage && navigator.storage.persist && navigator.storage.persis
 if (window.innerWidth <= 760) $('side').classList.add('hide');
 renderLib();
 // test hook (harmless): exposes internals for automated checks
-window.__abr = { NE, get state() { return { ch, si, playing, engine: engineName() }; } };
+window.__abr = { NE, styleGap, styleRate, get state() { return { ch, si, playing, engine: engineName() }; } };
 })();
 </script>
 </body>
