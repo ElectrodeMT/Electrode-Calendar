@@ -154,6 +154,7 @@ const PIPER_PATHS = {
 };
 // Original voices made by blending Kokoro's built-in voice styles (not a copy of any real person).
 const BLENDS = {
+  af_hearth_v1: { name: 'Hearth (our own): warm, natural American narrator (most natural)', mix: { af_heart: 0.6, af_bella: 0.4 } },
   bm_storyteller_v1: { name: 'Storyteller (our own): warm, steady British narrator', mix: { bm_george: 0.5, bm_fable: 0.3, am_michael: 0.2 } },
   bm_raconteur_v1: { name: 'Raconteur (our own): deeper, richer British narrator', mix: { bm_fable: 0.45, bm_george: 0.3, am_onyx: 0.25 } },
   bm_wit_v1: { name: 'Wit (our own): lighter, playful British narrator', mix: { bm_lewis: 0.4, bm_george: 0.4, am_puck: 0.2 } }
@@ -223,7 +224,8 @@ function pump() {
     const t0 = performance.now();
     try {
       let r;
-      if (j.engine === 'test') { await new Promise(r => setTimeout(r, j.voice === 'slow' ? 300 : 10)); if (j.voice === 'fail') throw new Error('test failure'); r = { pcm: new Float32Array(j.voice === 'long' ? 48000 : 3600).fill(0.1), sr: 24000 }; } // silent engine for automated tests
+      if (j.engine === 'test') { await new Promise(r => setTimeout(r, j.voice === 'slow' ? 300 : 10)); if (j.voice === 'fail') throw new Error('test failure'); const ss = j.text.split(/(?<=[.!?…]["”’']?)\s+(?=["“'‘]?\p{Lu})/u).filter(Boolean), per = j.voice === 'long' ? 48000 : 3600, out = new Float32Array(ss.length * per + (ss.length - 1) * 3600);
+        ss.forEach((_, k) => { for (let i = 0; i < per; i++) out[k * (per + 3600) + i] = 0.1 * Math.sin(2 * Math.PI * 220 * i / 24000); }); r = { pcm: out, sr: 24000 }; } // silent engine for automated tests
       else if (j.engine === 'kokoro') { const k = await getKokoro(j.gpu); const a = await k.generate(j.text, { voice: j.voice, speed: j.speed || 1 }); r = { pcm: a.audio, sr: a.sampling_rate }; }
       else { const s = await getPiper(j.voice); r = wavToPcm(await (await s.predict(j.text)).arrayBuffer()); }
       const pcm = new Float32Array(r.pcm);
@@ -589,11 +591,11 @@ const NE = {
     this.ready[key] = p; p.catch(() => { delete this.ready[key]; hideDl(); });
     return p;
   },
-  gen(engine, voice, text, pri = 0, cache = true, owner = 'play') {
+  gen(engine, voice, text, pri = 0, cache = true, owner = 'play', ctx = null) {
     const speed = engine === 'kokoro' && storyMode() ? 1.1 : 1; // Storyteller pace: ~150 wpm like pro narration
     const k = engine + '|' + voice + '|' + speed + '|' + text;
     if (cache && this.cache.has(k)) return this.cache.get(k);
-    const p = engine === 'eleven' ? EL.gen(voice, text, owner) : this.call({ type: 'gen', engine, voice, text, pri, owner, speed, gpu: useGPU() }).then(m => {
+    const p = engine === 'eleven' ? EL.gen(voice, text, owner, ctx) : this.call({ type: 'gen', engine, voice, text, pri, owner, speed, gpu: useGPU() }).then(m => {
       const sec = m.pcm.length / m.sr; this.stats.ms += m.ms; this.stats.sec += sec; this.stats.n++;
       return { pcm: m.pcm, sr: m.sr };
     });
@@ -655,7 +657,7 @@ const EL = {
   },
   left() { return this.sub && this.sub.character_limit != null ? Math.max(0, this.sub.character_limit - this.sub.character_count) : null; },
   async refreshSub() { try { this.sub = await (await this.api('/v1/user/subscription')).json(); showCredits(); } catch {} },
-  gen(voice, text, owner) { return new Promise((resolve, reject) => { this.q.push({ voice, text, owner, model: this.model(), resolve, reject }); this.pump(); }); },
+  gen(voice, text, owner, ctx) { return new Promise((resolve, reject) => { this.q.push({ voice, text, owner, ctx, model: this.model(), resolve, reject }); this.pump(); }); },
   pump() {
     while (this.active < this.max && this.q.length) {
       const j = this.q.shift(); this.active++;
@@ -668,7 +670,8 @@ const EL = {
       for (let a = 0; ; a++) {
         try {
           const r = await this.api(`/v1/text-to-speech/${encodeURIComponent(j.voice)}?output_format=mp3_44100_128`, { method: 'POST',
-            headers: { 'Content-Type': 'application/json', Accept: 'audio/mpeg' }, body: JSON.stringify({ text: j.text, model_id: j.model }) });
+            headers: { 'Content-Type': 'application/json', Accept: 'audio/mpeg' }, body: JSON.stringify(Object.assign({ text: j.text, model_id: j.model, voice_settings: { stability: 0.4, similarity_boost: 0.8 } }, // a little less 'stable' = more human variation
+              j.ctx && !/v3/.test(j.model) ? { previous_text: j.ctx.prev || undefined, next_text: j.ctx.next || undefined } : {})) });
           blob = await r.blob(); break;
         } catch (e) { if ((e.status === 429 || e.status >= 500) && !e.fatal && a < 4) { await new Promise(r => setTimeout(r, 800 * 2 ** a)); continue; } throw e; }
       }
@@ -708,6 +711,7 @@ function wavHeader(samples, sr) {
   w(36, 'data'); v.setUint32(40, samples * 2, true); return v.buffer;
 }
 const silence = (sr, sec) => new Float32Array(Math.round(sr * sec));
+function ctxFor(c, s, j) { return { prev: s > 0 ? flat[c].slice(Math.max(0, s - 3), s).join(' ') : '', next: j + 1 < flat[c].length ? flat[c].slice(j + 1, j + 4).join(' ') : '' }; }
 const speakable = t => /[\p{L}\p{N}]/u.test(t);
 
 // ---------- "Storyteller" narration style ----------
@@ -717,7 +721,11 @@ const speakable = t => /[\p{L}\p{N}]/u.test(t);
 const storyMode = () => $('style').value === 'story';
 const wordsIn = t => (t.match(/[\p{L}\p{N}'’-]+/gu) || []).length;
 const endsWith = (t, re) => re.test(t.replace(/["”’'»)\]]+$/, ''));
-function styleGap(c, s) {
+const hash01 = t => { let h = 2166136261; for (let i = 0; i < t.length; i++) h = Math.imul(h ^ t.charCodeAt(i), 16777619); return ((h >>> 0) % 10000) / 10000; };
+function styleGap(c, s, exact = false) {
+  const g0 = styleGapBase(c, s); return exact || !storyMode() ? g0 : +(g0 * (0.85 + 0.3 * hash01(flat[c][s]))).toFixed(3); // humans never pause identically
+}
+function styleGapBase(c, s) {
   const t = flat[c][s], nxt = s + 1 < flat[c].length ? flat[c][s + 1] : null, para = pend[c].has(s);
   if (!storyMode()) return para ? 0.35 : 0;
   if (!nxt) return 1.1;                                                          // end of chapter
@@ -739,6 +747,98 @@ function styleRate(t) {   // gentle pace shaping inside the user's chosen speed
   if (w >= 28) return 1.04;                     // long descriptive runs: keep momentum
   return 1;
 }
+// --- Authentic-sounding output ---
+// 1) Generate phrase groups (up to a paragraph) so intonation flows across sentences instead of resetting.
+const CHUNK_MAX = { kokoro: 300, piper: 400, eleven: 500, test: 300 };
+function chunkEnd(c, s, e) {
+  const max = CHUNK_MAX[e] || 300; let j = s, len = flat[c][s].length;
+  while (!pend[c].has(j) && j + 1 < flat[c].length && len + flat[c][j + 1].length + 1 <= max) { j++; len += flat[c][j].length + 1; }
+  return j;
+}
+const ROMAN = { I: 1, V: 5, X: 10, L: 50, C: 100 };
+const romanToInt = r => { let n = 0; for (let i = 0; i < r.length; i++) { const v = ROMAN[r[i]], w = ROMAN[r[i + 1]] || 0; n += v < w ? -v : v; } return n; };
+function speechText(t) { // say symbols the way a person would
+  return t.replace(/\b(Chapter|Part|Book|Act|Section|Volume)\s+([IVXLC]+)\b/g, (m, w, r) => `${w} ${romanToInt(r)}`)
+    .replace(/&/g, ' and ').replace(/(\d)\s*%/g, '$1 percent').replace(/\be\.g\.,?/gi, 'for example,').replace(/\bi\.e\.,?/gi, 'that is,')
+    .replace(/\betc\./gi, 'et cetera.').replace(/\bvs\.?(?=\s)/gi, 'versus').replace(/https?:\/\/\S+|www\.\S+/g, 'link')
+    .replace(/[*_#~|<>^\\]+/g, ' ').replace(/\s{2,}/g, ' ').trim();
+}
+const chunkText = (c, s, j) => speechText(flat[c].slice(s, j + 1).join(' '));
+const letters = t => (t.match(/[\p{L}\p{N}]/gu) || []).length;
+// 2) Find where each sentence ends inside the generated audio by snapping to the model's own pauses.
+function findCuts(pcm, sr, w) {
+  const n = w.length; if (n < 2) return [];
+  const hop = Math.max(1, Math.round(sr * 0.01)), nf = Math.floor(pcm.length / hop), e = new Float32Array(nf); let mx = 0;
+  for (let f = 0; f < nf; f++) { let a = 0; for (let i = f * hop; i < (f + 1) * hop; i++) a += pcm[i] * pcm[i]; e[f] = Math.sqrt(a / hop); if (e[f] > mx) mx = e[f]; }
+  if (!mx) return null;
+  const th = mx * 0.04, sil = []; let st = -1;
+  for (let f = 0; f <= nf; f++) { const q = f < nf && e[f] < th; if (q && st < 0) st = f; else if (!q && st >= 0) { if (f - st >= 8) sil.push([st, f]); st = -1; } }
+  let a = 0; while (a < nf && e[a] < th) a++; let b = nf - 1; while (b > a && e[b] < th) b--;
+  const inner = sil.filter(([x, y]) => x > a && y < b); if (inner.length < n - 1) return null;
+  const tot = w.reduce((p, q) => p + q, 0) || 1; let acc = 0, last = -1; const cuts = [];
+  for (let k = 0; k < n - 1; k++) {
+    acc += w[k]; const target = a + (b - a) * acc / tot; let best = -1, bs = 1e9;
+    for (let i = last + 1; i < inner.length - (n - 2 - k); i++) { const mid = (inner[i][0] + inner[i][1]) / 2, sc = Math.abs(mid - target) - 1.5 * (inner[i][1] - inner[i][0]); if (sc < bs) { bs = sc; best = i; } }
+    if (best < 0 || Math.abs((inner[best][0] + inner[best][1]) / 2 - target) > (b - a) * 0.3 + 40) return null;
+    last = best; cuts.push(Math.round((inner[best][0] + inner[best][1]) / 2) * hop);
+  }
+  return cuts;
+}
+function fade(x, sr) { const x2 = new Float32Array(x), n = Math.min(Math.round(sr * 0.012), x2.length >> 1); for (let i = 0; i < n; i++) { const g = i / n; x2[i] *= g; x2[x2.length - 1 - i] *= g; } return x2; }
+// 3) Narration mastering: warmth, less metallic edge, gentle compression, audiobook loudness (ACX: -18..-23 dB RMS, peaks <= -3 dB).
+function biquad(x, type, f0, sr, db = 0, Q = 0.707) {
+  if (f0 >= sr / 2) return; const A = 10 ** (db / 40), w = 2 * Math.PI * f0 / sr, cs = Math.cos(w), al = Math.sin(w) / (2 * Q); let b0, b1, b2, a0, a1, a2;
+  if (type === 'hp') { b0 = (1 + cs) / 2; b1 = -(1 + cs); b2 = b0; a0 = 1 + al; a1 = -2 * cs; a2 = 1 - al; }
+  else if (type === 'peak') { b0 = 1 + al * A; b1 = -2 * cs; b2 = 1 - al * A; a0 = 1 + al / A; a1 = -2 * cs; a2 = 1 - al / A; }
+  else { const sq = 2 * Math.sqrt(A) * al, lo = type === 'low';
+    b0 = A * ((A + 1) - (lo ? 1 : -1) * (A - 1) * cs + sq); b1 = (lo ? 2 : -2) * A * ((A - 1) - (lo ? 1 : -1) * (A + 1) * cs); b2 = A * ((A + 1) - (lo ? 1 : -1) * (A - 1) * cs - sq);
+    a0 = (A + 1) + (lo ? 1 : -1) * (A - 1) * cs + sq; a1 = (lo ? -2 : 2) * ((A - 1) + (lo ? 1 : -1) * (A + 1) * cs); a2 = (A + 1) + (lo ? 1 : -1) * (A - 1) * cs - sq; }
+  b0 /= a0; b1 /= a0; b2 /= a0; a1 /= a0; a2 /= a0; let x1 = 0, x2 = 0, y1 = 0, y2 = 0;
+  for (let i = 0; i < x.length; i++) { const v = x[i], y = b0 * v + b1 * x1 + b2 * x2 - a1 * y1 - a2 * y2; x2 = x1; x1 = v; y2 = y1; y1 = y; x[i] = y; }
+}
+function speechRms(x, sr) {
+  const hop = Math.max(1, Math.round(sr * 0.02)), fr = []; let mx = 0;
+  for (let i = 0; i + hop <= x.length; i += hop) { let a = 0; for (let k = i; k < i + hop; k++) a += x[k] * x[k]; const r = Math.sqrt(a / hop); fr.push(r); if (r > mx) mx = r; }
+  const sp = fr.filter(r => r > mx * 0.1); return sp.length ? Math.sqrt(sp.reduce((a, r) => a + r * r, 0) / sp.length) : 0;
+}
+function master(x, sr) {
+  biquad(x, 'hp', 75, sr); biquad(x, 'low', 180, sr, 1.5); biquad(x, 'peak', 5500, sr, -2.5, 1.2); biquad(x, 'high', 9000, sr, -1.5);
+  let r = speechRms(x, sr); if (!r) return x; let g = 0.1 / r; for (let i = 0; i < x.length; i++) x[i] *= g; // -20 dBFS
+  const th = 0.0794, ratio = 2.5, at = Math.exp(-1 / (0.008 * sr)), rl = Math.exp(-1 / (0.15 * sr)); let env = 0;   // compressor, -22 dB threshold
+  for (let i = 0; i < x.length; i++) { const v = Math.abs(x[i]); env = v > env ? at * env + (1 - at) * v : rl * env + (1 - rl) * v; if (env > th) x[i] *= (th * (env / th) ** (1 / ratio)) / env; }
+  r = speechRms(x, sr); g = r ? 0.112 / r : 1; // -19 dBFS
+  for (let i = 0; i < x.length; i++) { let v = x[i] * g; const a = Math.abs(v); if (a > 0.7) v = Math.sign(v) * Math.min(0.89, 0.7 + (a - 0.7) * 0.25); x[i] = v; } // soft limit near -3 dB
+  return x;
+}
+// 4) A faint, constant "room tone" (as in a real recording booth) instead of dead digital silence.
+function roomTone(x, seed) {
+  let s = (seed * 2654435761) >>> 0 || 1, lp = 0;
+  for (let i = 0; i < x.length; i++) { s ^= s << 13; s >>>= 0; s ^= s >>> 17; s ^= s << 5; s >>>= 0; const w = (s / 4294967296) * 2 - 1; lp = 0.97 * lp + 0.03 * w; x[i] += 0.0035 * lp + 0.00035 * w; }
+  return x;
+}
+// Turn one generated phrase group into finished narration + the start time of each sentence (for highlighting).
+const cutStats = { ok: 0, fail: 0 };
+function assemble(res, c, s, j, story, gapAfter) {
+  const sr = res.sr, pcm = res.pcm, idx = []; for (let k = s; k <= j; k++) idx.push(k);
+  const spk = idx.filter(k => speakable(flat[c][k])), cuts = findCuts(pcm, sr, spk.map(k => letters(flat[c][k])) );
+  if (spk.length > 1) cutStats[cuts ? 'ok' : 'fail']++;
+  const toStarts = st => idx.map(k => { const i = spk.indexOf(k); return i >= 0 ? st[i] : (st[spk.findIndex(q => q > k)] ?? st[st.length - 1] ?? 0); });
+  if (!story) {
+    const st = cuts ? [0, ...cuts.map(q => q / sr)] : spk.map((_, i) => pcm.length / sr * spk.slice(0, i).reduce((a, k) => a + letters(flat[c][k]), 0) / Math.max(1, spk.reduce((a, k) => a + letters(flat[c][k]), 0)));
+    return { pcm: gapAfter ? concat([pcm, silence(sr, gapAfter)]) : pcm, sr, starts: toStarts(st) };
+  }
+  const parts = [], st = []; let len = 0;
+  const add = a => { parts.push(a); len += a.length; };
+  if (cuts) {
+    const bounds = [0, ...cuts, pcm.length];
+    spk.forEach((k, i) => { st.push(len / sr); add(fade(trimSilence(pcm.subarray(bounds[i], bounds[i + 1]), sr), sr)); add(silence(sr, i < spk.length - 1 ? styleGap(c, k) : gapAfter)); });
+  } else {
+    const body = fade(trimSilence(pcm, sr), sr), tot = Math.max(1, spk.reduce((a, k) => a + letters(flat[c][k]), 0)); let acc = 0;
+    spk.forEach(k => { st.push(body.length / sr * acc / tot); acc += letters(flat[c][k]); }); add(body); add(silence(sr, gapAfter));
+  }
+  const out = master(concat(parts), sr); roomTone(out, s * 7919 + c * 104729 + 1);
+  return { pcm: out, sr, starts: toStarts(st) };
+}
 function trimSilence(pcm, sr) {
   let a = 0, b = pcm.length - 1; const th = 0.008;
   while (a < b && Math.abs(pcm[a]) < th) a++;
@@ -749,7 +849,7 @@ function trimSilence(pcm, sr) {
 
 // ---------- voices UI ----------
 let browserVoices = [], piperList = null, kokoroList = null;
-const OWN_VOICES = [{ id: 'bm_storyteller_v1', name: 'Storyteller (our own): warm, steady British narrator', own: true }, { id: 'bm_raconteur_v1', name: 'Raconteur (our own): deeper, richer British narrator', own: true }, { id: 'bm_wit_v1', name: 'Wit (our own): lighter, playful British narrator', own: true }];
+const OWN_VOICES = [{ id: 'af_hearth_v1', name: 'Hearth (our own): warm, natural American narrator (most natural)', own: true }, { id: 'bm_storyteller_v1', name: 'Storyteller (our own): warm, steady British narrator', own: true }, { id: 'bm_raconteur_v1', name: 'Raconteur (our own): deeper, richer British narrator', own: true }, { id: 'bm_wit_v1', name: 'Wit (our own): lighter, playful British narrator', own: true }];
 const KOKORO_FALLBACK = OWN_VOICES.concat(['af_heart','af_bella','af_nicole','af_aoede','af_kore','af_sarah','af_nova','af_sky','af_alloy','af_jessica','af_river','am_michael','am_fenrir','am_puck','am_echo','am_eric','am_liam','am_onyx','am_adam','am_santa','bf_emma','bf_isabella','bf_alice','bf_lily','bm_george','bm_fable','bm_lewis','bm_daniel'].map(id => ({ id })));
 function langPrefix() { return (navigator.language || 'en').slice(0, 2).toLowerCase(); }
 async function fillVoices() {
@@ -777,7 +877,7 @@ async function fillVoices() {
     const list = (kokoroList || KOKORO_FALLBACK).slice().sort((a, b) => (b.own ? 1 : 0) - (a.own ? 1 : 0) || grade(a.overallGrade) - grade(b.overallGrade));
     const accent = id => id[0] === 'b' ? 'British' : 'American', sex = id => id[1] === 'f' ? 'female' : 'male';
     list.forEach(v => sel.add(new Option(v.own ? '★ ' + v.name : `${v.name || v.id.split('_')[1].replace(/^./, c => c.toUpperCase())}: ${accent(v.id)} ${sex(v.id)}${v.overallGrade ? ' · grade ' + v.overallGrade : ''}${v.traits ? ' ' + v.traits : ''}`, v.id)));
-    sel.value = list.some(v => v.id === saved) ? saved : 'bm_storyteller_v1';
+    sel.value = list.some(v => v.id === saved) ? saved : 'af_hearth_v1';
   } else {
     sel.add(new Option('Loading voice list…', '')); sel.disabled = true;
     try { if (!piperList) piperList = (await NE.call({ type: 'voices' })).voices; }
@@ -810,13 +910,13 @@ function stopAudio() { ignorePauseUntil = performance.now() + 800; try { audio.p
 function setPlayBtn() { $('play').textContent = playing ? '⏸' : '▶'; if ('mediaSession' in navigator) try { navigator.mediaSession.playbackState = playing ? 'playing' : 'paused'; } catch {} }
 const nextPos = (c, s) => s + 1 < flat[c].length ? [c, s + 1] : c + 1 < flat.length ? [c + 1, 0] : null;
 
-function prefetch(my) {
-  const e = engineName(), v = $('voice').value; let pos = [ch, si], secs = 0;
-  for (let k = 0, ahead = e === 'eleven' ? 2 : 10; k < ahead; k++) { // ElevenLabs: small lookahead so skipping wastes few credits
-    pos = nextPos(...pos); if (!pos) break;
-    const t = flat[pos[0]][pos[1]]; if (!speakable(t)) continue;
-    secs += t.length / 15; NE.gen(e, v, t, 1).catch(() => {});
-    if (secs > 45) break;
+function prefetch(c, j) { // generate the next phrase groups while this one plays
+  const e = engineName(), v = $('voice').value; let pos = nextPos(c, j), secs = 0;
+  for (let k = 0, ahead = e === 'eleven' ? 1 : 5; k < ahead && pos; k++) { // ElevenLabs: small lookahead so skipping wastes few credits
+    while (pos && !speakable(flat[pos[0]][pos[1]])) pos = nextPos(...pos); if (!pos) break;
+    const [pc, ps] = pos, pj = chunkEnd(pc, ps, e), t = chunkText(pc, ps, pj);
+    NE.gen(e, v, t, 1, true, 'play', ctxFor(pc, ps, pj)).catch(() => {}); secs += t.length / 15;
+    if (secs > 45) break; pos = nextPos(pc, pj);
   }
 }
 async function speakCurrent() {
@@ -830,7 +930,7 @@ async function speakCurrent() {
   highlight(true); save();
   const text = flat[ch][si];
   if (!speakable(text)) { si++; return speakCurrent(); }
-  if (isNeural()) return speakNeural(my, text);
+  if (isNeural()) return speakNeural(my);
   const u = new SpeechSynthesisUtterance(text);
   const v = browserVoices.find(v => v.voiceURI === $('voice').value); if (v) { u.voice = v; u.lang = v.lang; }
   u.rate = Math.min(+$('rate').value * styleRate(text), 2.5); u.pitch = +$('pitch').value;
@@ -839,14 +939,14 @@ async function speakCurrent() {
   u.onerror = e => { if (my !== token || !playing || e.error === 'interrupted' || e.error === 'canceled') return; si++; speakCurrent(); };
   synth.speak(u);
 }
-async function speakNeural(my, text) {
-  const e = engineName(), v = $('voice').value;
+async function speakNeural(my) {
+  const e = engineName(), v = $('voice').value, c = ch, s0 = si, j = chunkEnd(c, s0, e), text = chunkText(c, s0, j);
   let res, waitT = setTimeout(() => { if (my === token) { status('Generating voice…'); stalls++; } }, 400);
   try {
     if (!NE.ready[readyKey(e, v)]) { status(`Loading ${ENGINE_NAMES[e] || e} voice…`); await NE.load(e, v); }
     if (my !== token) return;
-    prefetch(my);
-    res = await Promise.race([NE.gen(e, v, text, 0), new Promise((_, rej) => setTimeout(() => rej(new Error('Voice generation timed out')), 120000))]);
+    prefetch(c, j);
+    res = await Promise.race([NE.gen(e, v, text, 0, true, 'play', ctxFor(c, s0, j)), new Promise((_, rej) => setTimeout(() => rej(new Error('Voice generation timed out')), 120000))]);
   } catch (err) {
     clearTimeout(waitT); if (my !== token || err.dropped) return;
     console.warn('Voice generation failed:', err.message); failures++;
@@ -856,26 +956,30 @@ async function speakNeural(my, text) {
       if (e === 'eleven') { const m = err.message; fallbackToBrowser(m); return pause(`${m} Switched to device voices: press Play to keep listening (Kokoro and Piper are free high-quality options).`); }
       fallbackToBrowser(`Neural voice failed (${err.message}).`); return speakCurrent();
     }
-    si++; return speakCurrent();
+    si = j + 1; return speakCurrent();
   }
   clearTimeout(waitT); if (my !== token || !playing) return;
   failures = 0; if (/Generating|Loading|Downloading/.test($('status').textContent)) status('');
   maybeSlowBanner();
-  const gap = styleGap(ch, si), body = storyMode() ? trimSilence(res.pcm, res.sr) : res.pcm;
-  const pcm = gap ? concat([body, silence(res.sr, gap)]) : body;
+  const story = storyMode(), out = assemble(res, c, s0, j, story, story ? styleGap(c, j) : (pend[c].has(j) ? 0.35 : 0)), pcm = out.pcm;
   const blob = new Blob([wavHeader(pcm.length, res.sr), floatToInt16(pcm)], { type: 'audio/wav' });
   if (audioURL) URL.revokeObjectURL(audioURL); audioURL = URL.createObjectURL(blob);
   ignorePauseUntil = performance.now() + 800;
-  audio.src = audioURL; audio.playbackRate = +$('rate').value * styleRate(text); audio.preservesPitch = true; audioFor = { ch, si, my };
+  audio.src = audioURL; audio.playbackRate = +$('rate').value; audio.preservesPitch = true; audioFor = { ch: c, s0, j, starts: out.starts, my };
   try { await audio.play(); } catch (err) { if (my === token) { pause('Tap Play to start audio (your browser blocked autoplay).'); } }
 }
 function concat(parts) { const n = parts.reduce((a, p) => a + p.length, 0), o = new Float32Array(n); let k = 0; for (const p of parts) { o.set(p, k); k += p.length; } return o; }
-audio.addEventListener('ended', () => { if (!audioFor || audioFor.my !== token || !playing) return; si++; speakCurrent(); });
+audio.addEventListener('ended', () => { if (!audioFor || audioFor.my !== token || !playing) return; si = audioFor.j + 1; speakCurrent(); });
+audio.addEventListener('timeupdate', () => { // move the highlight sentence by sentence inside a phrase group
+  const a = audioFor; if (!a || a.my !== token || !a.starts || ch !== a.ch) return;
+  let k = 0; while (k + 1 < a.starts.length && a.starts[k + 1] <= audio.currentTime + 0.05) k++;
+  if (a.s0 + k !== si) { si = a.s0 + k; highlight(true); save(); }
+});
 audio.addEventListener('pause', () => { // paused by OS / headphones / another app
   if (audio.ended || performance.now() < ignorePauseUntil || !playing || !isNeural()) return;
   playing = false; token++; setPlayBtn();
 });
-audio.addEventListener('error', () => { if (playing && isNeural() && audioFor && audioFor.my === token) { si++; speakCurrent(); } });
+audio.addEventListener('error', () => { if (playing && isNeural() && audioFor && audioFor.my === token) { si = audioFor.j + 1; speakCurrent(); } });
 function maybeSlowBanner() {
   if (bannerShown || engineName() !== 'kokoro' || NE.stats.n < 4 || NE.rtf() < 0.95) return;
   bannerShown = true; const b = $('banner'); b.classList.remove('hide');
@@ -902,7 +1006,7 @@ function play() {
   if (!isNeural() && !synth) return status('Speech is not supported in this browser. Choose Kokoro or Piper.');
   if (ch === flat.length - 1 && si >= flat[ch].length) { ch = 0; si = 0; renderChapter(); } // finished: start over
   playing = true; setPlayBtn(); status('');
-  if (isNeural() && audioFor && audioFor.ch === ch && audioFor.si === si && audio.currentTime > 0 && !audio.ended && audio.src === audioURL) {
+  if (isNeural() && audioFor && audioFor.ch === ch && audioFor.j != null && si >= audioFor.s0 && si <= audioFor.j && audio.currentTime > 0 && !audio.ended && audio.src === audioURL) {
     token++; audioFor.my = token; audio.play().catch(() => speakCurrent()); return;
   }
   if (synth) synth.cancel(); speakCurrent();
@@ -972,17 +1076,22 @@ async function exportAudio() {
     };
     for (const c of chs) {
       const story = storyMode();
-      const items = (titles ? [{ t: book.chapters[c].title, gap: story ? 1.1 : 0.9 }] : []).concat(flat[c].map((t, i) => ({ t, gap: story ? styleGap(c, i) : pend[c].has(i) ? 0.6 : 0.15, count: true })));
-      // pipeline: keep a few sentences generating ahead of the encoder
+      const items = titles ? [{ t: speechText(book.chapters[c].title), gap: story ? 1.1 : 0.9, title: true }] : [];
+      for (let s1 = 0; s1 < flat[c].length;) { const j1 = chunkEnd(c, s1, e); items.push({ s: s1, j: j1, t: chunkText(c, s1, j1), count: j1 - s1 + 1 }); s1 = j1 + 1; }
+      // pipeline: keep a few phrase groups generating ahead of the encoder
       const reqs = []; let next = 0;
-      const fill = () => { while (next < items.length && reqs.length < 4) { const it = items[next++]; reqs.push({ it, p: speakable(it.t) ? NE.gen(e, v, it.t, 0, false, 'export') : Promise.resolve(null) }); } };
+      const fill = () => { while (next < items.length && reqs.length < 4) { const it = items[next++]; reqs.push({ it, p: speakable(it.t) ? NE.gen(e, v, it.t, 0, false, 'export', it.title ? null : ctxFor(c, it.s, it.j)) : Promise.resolve(null) }); } };
       fill();
       while (reqs.length) {
         if (job.cancel) throw new Error('cancelled');
         const { it, p } = reqs.shift(); fill();
         let r = null; try { r = await p; } catch (err) { if (job.cancel) throw new Error('cancelled'); if (err.fatal) throw err; console.warn('skip', err); }
-        if (r) { if (!enc) enc = newEnc(r.sr); push(enc, story ? trimSilence(r.pcm, r.sr) : r.pcm); push(enc, silence(enc.sr, it.gap)); }
-        if (it.count) done++;
+        if (r) {
+          if (!enc) enc = newEnc(r.sr);
+          if (it.title) { push(enc, story ? roomTone(master(fade(trimSilence(r.pcm, r.sr), r.sr), r.sr), c + 1) : r.pcm); push(enc, story ? roomTone(silence(enc.sr, it.gap), c + 7) : silence(enc.sr, it.gap)); }
+          else push(enc, assemble(r, c, it.s, it.j, story, story ? styleGap(c, it.j) : (pend[c].has(it.j) ? 0.6 : 0.15)).pcm);
+        }
+        if (it.count) done += it.count;
         const el = (Date.now() - t0) / 1000, eta = done ? el / done * (total - done) : 0;
         setP(`Chapter ${c + 1}/${flat.length}: ${done}/${total} sentences · ${eta > 3600 ? (eta / 3600).toFixed(1) + ' h' : Math.ceil(eta / 60) + ' min'} left`);
       }
@@ -1118,7 +1227,7 @@ try { navigator.storage && navigator.storage.persist && navigator.storage.persis
 if (window.innerWidth <= 760) $('side').classList.add('hide');
 renderLib();
 // test hook (harmless): exposes internals for automated checks
-window.__abr = { NE, styleGap, styleRate, get state() { return { ch, si, playing, engine: engineName() }; } };
+window.__abr = { NE, cutStats, styleGap, styleRate, speechText, chunkEnd: (c, s) => chunkEnd(c, s, engineName()), get state() { return { ch, si, playing, engine: engineName() }; } };
 })();
 </script>
 </body>

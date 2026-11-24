@@ -207,16 +207,35 @@ add('Stress', '20. Chaos: 400 random clicks/seeks/keys while neural audio plays'
 add('Style', '25. Storyteller timing rules (pauses, staccato, questions, beats) + export uses them', async p => {
   fs.writeFileSync(F('story.txt'), 'Chapter One\n\nIt was, by all accounts, a perfectly ordinary Tuesday. The rain fell. The kettle sulked. And Arthur, aged sixty-three, decided that today he would finally become an adventurer.\n\n"Where are you going?" asked his wife.\n\n"Out," said Arthur.\n\nHe considered this. Adventurers, he was fairly certain, did not carry umbrellas. Arthur owned none of these things... but he did have a very nice umbrella and a hat.\n\nSo he took it.\n');
   await open(p, 'story.txt'); assert(await p.$eval('#style', s => s.value) === 'story', 'Storyteller is not the default');
-  const g = await p.evaluate(() => { const out = {}; const sents = [...document.querySelectorAll('#text .s')].map(x => x.textContent.trim()); sents.forEach((t, i) => out[t.slice(0, 24)] = +__abr.styleGap(__abr.state.ch, i).toFixed(2)); return { out, rate: [__abr.styleRate('So he took it.'), __abr.styleRate('It was, by all accounts, a perfectly ordinary Tuesday.')] }; });
+  const g = await p.evaluate(() => { const out = {}; const sents = [...document.querySelectorAll('#text .s')].map(x => x.textContent.trim()); sents.forEach((t, i) => out[t.slice(0, 24)] = +__abr.styleGap(__abr.state.ch, i, true).toFixed(2)); return { out, rate: [__abr.styleRate('So he took it.'), __abr.styleRate('It was, by all accounts, a perfectly ordinary Tuesday.')] }; });
   const o = g.out, want = { 'It was, by all accounts,': 0.3, 'The rain fell.': 0.18, 'The kettle sulked.': 0.3, 'And Arthur, aged sixty-t': 0.7, '"Where are you going?" a': 0.7, '"Out," said Arthur.': 0.65, 'He considered this.': 0.3, 'Arthur owned none of the': 0.95, 'So he took it.': 1.1 };
   for (const [k, v] of Object.entries(want)) assert(o[k] === v, `gap after "${k}" = ${o[k]}, expected ${v}. All: ${JSON.stringify(o)}`);
   assert(g.rate[0] < 1 && g.rate[1] === 1, 'rate shaping ' + g.rate);
   await testEngine(p); await p.click('#audioBtn'); await p.selectOption('#exScope', 'ch'); await p.selectOption('#exFmt', 'wav'); await p.uncheck('#exTitles');
   const [d] = await Promise.all([p.waitForEvent('download', { timeout: 30000 }), p.click('#exStart')]);
-  const samples = fs.readFileSync(await d.path()).readUInt32LE(40) / 2, n = Object.keys(o).length;
-  const exp = n * 3600 + Object.values(o).reduce((a, x) => a + Math.round(24000 * x), 0);
-  assert(samples === exp, `storyteller export ${samples} samples, expected ${exp}`);
-  return `gaps ok (${n} sentences), export ${samples} samples`;
+  const buf = fs.readFileSync(await d.path()), samples = buf.readUInt32LE(40) / 2, n = Object.keys(o).length;
+  let runs = 0, inRun = false, quiet = 0; // count sentences actually present: bursts of sound separated by >= 0.1 s of quiet
+  for (let i = 0; i + 1 < samples; i += 120) { const v = Math.abs(buf.readInt16LE(44 + i * 2)) / 32768; let loud = v > 0.02; if (!loud) { for (let k = 1; k < 120 && !loud && i + k < samples; k += 6) loud = Math.abs(buf.readInt16LE(44 + (i + k) * 2)) / 32768 > 0.02; }
+    if (loud) { if (!inRun) runs++; inRun = true; quiet = 0; } else if (inRun && ++quiet >= 20) inRun = false; }
+  const base = n * 3600 + Object.values(o).reduce((a, x) => a + Math.round(24000 * x), 0);
+  assert(runs === n, `expected ${n} spoken sentences in export, found ${runs}`); assert(Math.abs(samples - base) < base * 0.12, `length ${samples} vs ~${base}`);
+  return `gaps ok, ${runs}/${n} sentences present, ${(samples / 24000).toFixed(1)}s`;
+});
+
+add('Style', '26. Natural output: phrase groups, varied pauses, audiobook loudness, room tone, spoken symbols', async p => {
+  await open(p, 'book.txt'); await testEngine(p);
+  const r = await p.evaluate(() => ({ g: [__abr.styleGap(0, 0), __abr.styleGap(0, 0, true)], chunk: __abr.chunkEnd(0, 0), t: __abr.speechText('Chapter IV & 50% e.g. this, see https://x.y now.') }));
+  assert(r.chunk === 1, 'phrase group should cover both sentences of paragraph 1, got end ' + r.chunk);
+  assert(r.t === 'Chapter 4 and 50 percent for example, this, see link now.', 'speech text: ' + r.t);
+  await p.click('#audioBtn'); await p.selectOption('#exScope', 'ch'); await p.selectOption('#exFmt', 'wav');
+  const [d] = await Promise.all([p.waitForEvent('download', { timeout: 30000 }), p.click('#exStart')]);
+  const b = fs.readFileSync(await d.path()), n = b.readUInt32LE(40) / 2, x = i => b.readInt16LE(44 + i * 2) / 32768;
+  let sq = 0, cnt = 0, peak = 0, run = 0, longest = 0;
+  for (let i = 0; i < n; i++) { const v = Math.abs(x(i)); peak = Math.max(peak, v); if (v > 0.03) { sq += v * v; cnt++; } run = v === 0 ? run + 1 : 0; longest = Math.max(longest, run); }
+  const rmsDb = 20 * Math.log10(Math.sqrt(sq / cnt)), peakDb = 20 * Math.log10(peak);
+  assert(rmsDb > -23 && rmsDb < -16, 'speech loudness ' + rmsDb.toFixed(1) + ' dB'); assert(peakDb <= -0.9, 'peaks too hot ' + peakDb.toFixed(1));
+  assert(longest < 240, `dead digital silence: ${(longest / 24).toFixed(0)} ms of exact zeros`);
+  return `speech ${rmsDb.toFixed(1)} dB RMS, peak ${peakDb.toFixed(1)} dB, longest digital silence ${(longest / 24).toFixed(1)} ms, jittered gap ${r.g[0]} vs base ${r.g[1]}`;
 });
 
 // ---------- ElevenLabs (mocked API: no real credits used) ----------
@@ -248,7 +267,7 @@ add('ElevenLabs', '21. Key check, George default, credits shown, plays book, rep
   assert(await p.$eval('#voice', s => s.value) === 'JBFqnCBsd6RMkjVDRZzb', 'George not default'); await p.keyboard.press('Escape');
   await p.click('#play'); await p.waitForFunction(() => /Finished/.test(document.getElementById('status').textContent), null, { timeout: 30000 });
   const first = p.el.tts; await p.click('#play'); await p.waitForTimeout(300); await p.waitForFunction(() => /Finished/.test(document.getElementById('status').textContent), null, { timeout: 30000 });
-  assert(first === 6, `expected 6 TTS requests for 6 sentences, got ${first}`); assert(p.el.tts === first, `replay re-spent credits: ${p.el.tts - first} extra requests`);
+  assert(first === 4, `expected 4 TTS requests (6 sentences in 4 phrase groups), got ${first}`); assert(p.el.tts === first, `replay re-spent credits: ${p.el.tts - first} extra requests`);
   return `${first} requests first play, 0 on replay; ${info.slice(0, 60)}`;
 });
 add('ElevenLabs', '22. Credits run out mid-book: clear message, falls back to device voices', async p => {
@@ -272,8 +291,8 @@ add('ElevenLabs', '24. No key → asks for key (no silent switch); export length
   await p.click('#audioBtn'); await p.selectOption('#exScope', 'ch'); await p.selectOption('#exFmt', 'wav');
   const [d] = await Promise.all([p.waitForEvent('download', { timeout: 30000 }), p.click('#exStart')]);
   const samples = fs.readFileSync(await d.path()).readUInt32LE(40) / 2; const g = [0.9, 0.15, 0.6, 0.6].reduce((a, x) => a + Math.round(44100 * x), 0);
-  const exp = [5 * 8820 - 8820 + g, 4 * 8820 + g]; // title + 3 sentences = 4 clips
-  assert(exp.includes(samples), `export samples ${samples}, expected ${exp[1]}`); return `export ${samples} samples; preview free`;
+  const exp = 3 * 8820 + [0.9, 0.6, 0.6].reduce((a, x) => a + Math.round(44100 * x), 0); // title + 2 phrase groups
+  assert(samples === exp, `export samples ${samples}, expected ${exp}`); return `export ${samples} samples; preview free`;
 });
 
 (async () => {
