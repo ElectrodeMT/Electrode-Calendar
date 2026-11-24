@@ -4,6 +4,13 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Audiobook Reader</title>
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<link rel="icon" href="icon-192.png">
+<meta name="theme-color" content="#2f6f5e">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Audiobooks">
 <style>
 :root{--bg:#f6f4ef;--panel:#fff;--ink:#1d1d1f;--muted:#6b6b70;--line:#e3e0d8;--accent:#2f6f5e;--accent-ink:#fff;--hl:#ffe9a8;--read:#85858b;--warn:#fff4d6;--warn-ink:#6b4e00}
 @media (prefers-color-scheme:dark){:root:not([data-theme=light]){--bg:#121314;--panel:#1b1c1e;--ink:#ececee;--muted:#9a9aa2;--line:#2c2d31;--accent:#5fb39a;--accent-ink:#0d1512;--hl:#4a3f12;--read:#6a6a70;--warn:#3a3014;--warn-ink:#f3d98a}}
@@ -142,6 +149,14 @@ dialog p{margin:6px 0;font-size:14px;color:var(--muted)}
   <p id="elInfo">No key saved.</p>
   <p>Generated sentences are saved on this device, so replaying never spends credits twice. Free-plan audio is for personal use (see ElevenLabs' terms).</p>
   <div class="r"><button class="btn sm" id="elClearCache">Delete saved ElevenLabs audio</button></div>
+  <h4>Use offline</h4>
+  <p id="offInfo">Save the app and your voices on this device so everything works without internet (ElevenLabs needs internet).</p>
+  <div class="r"><label class="opt"><input type="checkbox" id="offKokoro" checked> Kokoro narrator &amp; character voices (about 95 MB)</label></div>
+  <div class="r"><label class="opt"><input type="checkbox" id="offPiper"> Current Piper voice (about 20–110 MB)</label></div>
+  <div class="r"><label class="opt"><input type="checkbox" id="offOcr"> Scanned PDFs &amp; photos of pages (about 15 MB)</label></div>
+  <div class="r"><button class="btn primary" id="offGo">Make available offline</button></div>
+  <div class="bar hide" id="offBar"><i></i></div>
+  <p id="offStatus"></p>
   <h4>Characters in this book</h4>
   <p id="castHint">With Kokoro voices, the narrator gives each character a consistent shade of voice. Change any that were guessed wrong.</p>
   <ul class="list" id="castList" style="padding:0"></ul>
@@ -288,12 +303,12 @@ self.onmessage = async ({ data: m }) => {
 
 <script>
 // Cross-origin isolation lets neural voices use all CPU cores (needs coi-sw.js next to this file, http/https only).
+// The same service worker also keeps the app working offline, so it is always registered.
 (() => {
   try {
-    if (window.crossOriginIsolated || !('serviceWorker' in navigator) || !/^https?:$/.test(location.protocol)) return;
-    if (localStorage.getItem('abr.coiFailed')) return;
+    if (!('serviceWorker' in navigator) || !/^https?:$/.test(location.protocol)) return;
     navigator.serviceWorker.register('coi-sw.js').then(() => navigator.serviceWorker.ready).then(() => {
-      if (window.crossOriginIsolated) return;
+      if (window.crossOriginIsolated || localStorage.getItem('abr.coiFailed') || !navigator.onLine) return;
       if (sessionStorage.getItem('abr.coiTried')) { localStorage.setItem('abr.coiFailed', '1'); return; }
       sessionStorage.setItem('abr.coiTried', '1'); location.reload();
     }).catch(() => {});
@@ -662,7 +677,7 @@ const EL = {
   async api(path, opts = {}, timeout = 60000) {
     const ctl = new AbortController(), t = setTimeout(() => ctl.abort(), timeout); let r;
     try { r = await fetch(EL_BASE + path, { ...opts, signal: ctl.signal, headers: { 'xi-api-key': this.key(), ...(opts.headers || {}) } }); }
-    catch (e) { throw Object.assign(new Error(e.name === 'AbortError' ? 'ElevenLabs did not respond in time.' : 'Could not reach ElevenLabs. Check your internet connection.'), { status: 0 }); }
+    catch (e) { throw Object.assign(new Error(!navigator.onLine ? 'ElevenLabs needs internet, and you are offline.' : e.name === 'AbortError' ? 'ElevenLabs did not respond in time.' : 'Could not reach ElevenLabs. Check your internet connection.'), { status: 0, fatal: !navigator.onLine }); }
     finally { clearTimeout(t); }
     if (!r.ok) {
       let d = {}; try { d = (await r.json()).detail || {}; } catch {}
@@ -1382,6 +1397,42 @@ async function renderExports() {
   }
 }
 
+// ---------- offline ----------
+const VOICE_BASE_URL = 'https://huggingface.co/onnx-community/Kokoro-82M-v1.0-ONNX/resolve/main/voices/';
+const OFFLINE_VOICE_PARTS = ['bm_fable', 'bm_george', 'am_onyx', 'am_michael', 'af_heart', 'af_bella', 'bm_lewis', 'am_puck', 'am_eric', 'am_adam', 'am_santa', 'bf_emma', 'bf_isabella', 'bf_alice'];
+async function makeOffline() {
+  const out = $('offStatus'), bar = $('offBar'), btn = $('offGo');
+  if (!('serviceWorker' in navigator) || !/^https?:$/.test(location.protocol)) { out.textContent = 'Offline use needs the app opened from its web address (not a downloaded file).'; return; }
+  if (!navigator.onLine) { out.textContent = 'Connect to the internet once to download everything for offline use.'; return; }
+  btn.disabled = true; bar.classList.remove('hide');
+  let wake = null; try { wake = await navigator.wakeLock?.request('screen'); } catch {}
+  const kv = engineName() === 'kokoro' ? $('voice').value : prefs.get('voice.kokoro', 'bm_raconteur_v2');
+  const steps = [['App', async () => { await navigator.serviceWorker.ready; await Promise.all(['./', 'manifest.webmanifest', 'icon-192.png', 'icon-512.png', 'apple-touch-icon.png'].map(u => fetch(u).catch(() => {}))); }],
+    ['Book readers (PDF, EPUB, Word)', async () => { await loadScript(LIBS.pdf); await fetch(LIBS.pdfWorker); await loadScript(LIBS.jszip); await loadScript(LIBS.mammoth); }],
+    ['MP3 export', () => loadScript(LIBS.lame)]];
+  if ($('offKokoro').checked) steps.push(['Kokoro voice model', () => NE.load('kokoro', kv)],
+    ['Narrator & character voices', async () => { await Promise.all(OFFLINE_VOICE_PARTS.map(id => fetch(VOICE_BASE_URL + id + '.bin'))); await NE.gen('kokoro', kv, 'Ready.', 0, false, 'export'); }]);
+  if ($('offPiper').checked) { const pv = engineName() === 'piper' ? $('voice').value : prefs.get('voice.piper', 'en_US-hfc_female-medium'); steps.push(['Piper voice', async () => { await NE.load('piper', pv); await NE.gen('piper', pv, 'Ready.', 0, false, 'export'); }]); }
+  if ($('offOcr').checked) steps.push(['Text recognition (OCR)', async () => { await loadScript(LIBS.tesseract); const w = await Tesseract.createWorker('eng'); const cv = document.createElement('canvas'); cv.width = 200; cv.height = 60; const g = cv.getContext('2d'); g.fillStyle = '#fff'; g.fillRect(0, 0, 200, 60); g.fillStyle = '#000'; g.font = '30px serif'; g.fillText('Ready', 40, 40); await w.recognize(cv); await w.terminate(); }]);
+  const done = [];
+  try {
+    for (let i = 0; i < steps.length; i++) { out.textContent = `Saving for offline: ${steps[i][0]} (${i + 1}/${steps.length})…`; bar.firstElementChild.style.width = (100 * i / steps.length) + '%'; await steps[i][1](); done.push(steps[i][0]); }
+    bar.firstElementChild.style.width = '100%';
+    try { await navigator.storage?.persist?.(); } catch {}
+    prefs.set('offline', { at: Date.now(), items: done, voice: $('offKokoro').checked ? kv : null });
+    out.textContent = `Ready offline ✓ Saved: ${done.join(', ')}.` + (IS_IOS ? ' On iPhone, do this inside the Home Screen app: Safari and the Home Screen app keep separate storage.' : '');
+  } catch (err) { out.textContent = `Stopped at "${steps[done.length][0]}": ${err.message}. Check your connection and tap the button again; finished parts are kept.`; }
+  finally { btn.disabled = false; try { wake && wake.release(); } catch {} }
+}
+function offlineInfo() {
+  const o = prefs.get('offline', null);
+  $('offInfo').textContent = o ? `Ready offline ✓ (saved ${new Date(o.at).toLocaleDateString()}: ${o.items.join(', ')}). Run again after choosing a different voice.` : 'Save the app and your voices on this device so everything works without internet (ElevenLabs needs internet).';
+  $('offPiper').closest('.r').classList.toggle('hide', engineName() !== 'piper' && !prefs.get('voice.piper', ''));
+}
+$('offGo').onclick = makeOffline;
+addEventListener('offline', () => status(prefs.get('offline', null) ? 'You are offline. Reading and voices keep working (ElevenLabs needs internet).' : 'You are offline. To use the app offline, open ⤓ Audio → Make available offline while connected.'));
+addEventListener('online', () => status('Back online.'));
+
 // ---------- audio dialog ----------
 async function refreshDiag() {
   const mt = window.crossOriginIsolated ? navigator.hardwareConcurrency || 1 : 1;
@@ -1395,7 +1446,7 @@ async function refreshDiag() {
     $('storage').textContent = `This site is using ${(est.usage / 1e6).toFixed(0)} MB of storage. Downloaded: ${prefs.get('dl', []).map(k => k.replace('piper|', 'Piper ')).join(', ') || 'none yet'}.`;
   } catch { $('storage').textContent = 'Storage info unavailable.'; }
 }
-function openAudio() { refreshDiag(); renderExports(); renderCast(); if (!$('audioDlg').open) $('audioDlg').showModal(); }
+function openAudio() { refreshDiag(); renderExports(); renderCast(); offlineInfo(); if (!$('audioDlg').open) $('audioDlg').showModal(); }
 $('audioBtn').onclick = openAudio;
 function elKeyState() { $('elKey').placeholder = EL.key() ? 'Key saved (paste a new one to replace)' : 'ElevenLabs API key'; if (!EL.key()) $('elInfo').textContent = 'No key saved.'; }
 $('elSave').onclick = async () => {

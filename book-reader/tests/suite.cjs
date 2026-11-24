@@ -290,6 +290,21 @@ add('Characters', '29. Dash/«» dialogue, action beats, name linking, "same per
   return `dash/«»/action beats ok; merge ok; ElevenLabs voices ${JSON.stringify(ev)}`;
 });
 
+add('Offline', '30. Make available offline, then with the network blocked: app loads, opens Word/text, plays, exports MP3', async p => {
+  await p.waitForFunction(() => navigator.serviceWorker.controller, null, { timeout: 15000 });
+  await p.click('#audioBtn'); await p.uncheck('#offKokoro'); await p.click('#offGo');
+  await p.waitForFunction(() => /Ready offline|Stopped/.test(document.getElementById('offStatus').textContent), null, { timeout: 60000 });
+  const st0 = await p.textContent('#offStatus'); assert(/Ready offline/.test(st0), st0);
+  const ctx = p.context(); await ctx.setOffline(true); await p.reload(); await p.waitForFunction(() => window.__abr, null, { timeout: 15000 });
+  assert(!(await p.evaluate(() => navigator.onLine)), 'still online?');
+  await open(p, 'doc.docx'); assert((await chs(p)).join('|') === 'Part 1|Part 2', 'Word doc offline');
+  await open(p, 'book.txt'); await testEngine(p); await p.click('#play'); await p.waitForFunction(() => /Finished/.test(document.getElementById('status').textContent), null, { timeout: 30000 });
+  await p.click('#audioBtn'); await p.selectOption('#exScope', 'ch'); await p.selectOption('#exFmt', 'mp3');
+  const [d] = await Promise.all([p.waitForEvent('download', { timeout: 30000 }), p.click('#exStart')]);
+  const size = fs.statSync(await d.path()).size; assert(size > 500, 'mp3 offline'); await ctx.setOffline(false);
+  return `offline: app + Word + playback + MP3 (${size} bytes)`;
+});
+
 // ---------- ElevenLabs (mocked API: no real credits used) ----------
 function wavBuf(n, sr = 44100) { const b = Buffer.alloc(44 + n * 2); b.write('RIFF', 0); b.writeUInt32LE(36 + n * 2, 4); b.write('WAVEfmt ', 8); b.writeUInt32LE(16, 16); b.writeUInt16LE(1, 20); b.writeUInt16LE(1, 22); b.writeUInt32LE(sr, 24); b.writeUInt32LE(sr * 2, 28); b.writeUInt16LE(2, 32); b.writeUInt16LE(16, 34); b.write('data', 36); b.writeUInt32LE(n * 2, 40); return b; }
 async function castSet(p, name, idx, value) { // pick a cast row by its exact name label, then set its n-th menu
