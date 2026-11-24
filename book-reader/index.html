@@ -72,6 +72,7 @@ dialog h3{margin:0 0 4px}
 dialog h4{margin:18px 0 6px;font-size:13px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted)}
 dialog .r{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin:6px 0}
 dialog p{margin:6px 0;font-size:14px;color:var(--muted)}
+#myVoices li{cursor:default;flex-wrap:wrap;border:1px solid var(--line);margin-bottom:6px}
 #castList li{cursor:default;flex-wrap:wrap;border:1px solid var(--line);margin-bottom:6px}
 #castList select{max-width:180px}
 #exFiles li{cursor:default;flex-wrap:wrap;border:1px solid var(--line);margin-bottom:6px}
@@ -181,6 +182,10 @@ dialog p{margin:6px 0;font-size:14px;color:var(--muted)}
   <p id="elInfo">No key saved.</p>
   <p>Generated sentences are saved on this device, so replaying never spends credits twice. Free-plan audio is for personal use (see ElevenLabs' terms).</p>
   <div class="r"><button class="btn sm" id="elClearCache">Delete saved ElevenLabs audio</button></div>
+  <h4>My voice</h4>
+  <p id="myVoiceInfo">Add your personal voice file. It stays only on this device: never uploaded or shared.</p>
+  <ul class="list" id="myVoices" style="padding:0"></ul>
+  <div class="r"><label class="btn sm" for="myVoiceFile" style="cursor:pointer">Add my voice file…</label><input type="file" id="myVoiceFile" accept=".bin,application/octet-stream" class="hide"></div>
   <h4>Use offline</h4>
   <p id="offInfo">Save the app and your voices on this device so everything works without internet (ElevenLabs needs internet).</p>
   <div class="r"><label class="opt"><input type="checkbox" id="offKokoro" checked> Kokoro narrator &amp; character voices (about 95 MB)</label></div>
@@ -224,10 +229,13 @@ const VOICE_BASE = 'https://huggingface.co/onnx-community/Kokoro-82M-v1.0-ONNX/r
 const _fetch = self.fetch.bind(self);
 // Character voices: "<lang>x_mix__<voice>-<weight>__<voice>-<weight>" mixes any voice or blend (e.g. 60% narrator + 40% another style).
 const isMix = id => /^[ab]x_mix__/.test(id);
+const USER_VOICES = new Map(); // personal voices: provided by the page from this device's own storage, never downloaded
+const isUser = id => /^[ab]u_/.test(id);
 const voiceCache = new Map();
 function voiceData(id) {
   if (voiceCache.has(id)) return voiceCache.get(id);
   const p = (async () => {
+    if (isUser(id)) { const d = USER_VOICES.get(id); if (!d) throw new Error('Personal voice not loaded'); return d; }
     let mix = BLENDS[id] ? Object.entries(BLENDS[id].mix) : isMix(id) ? id.split('__').slice(1).map(t => { const i = t.lastIndexOf('-'); return [t.slice(0, i), +t.slice(i + 1) / 100]; }) : null;
     if (!mix) return new Float32Array(await (await _fetch(VOICE_BASE + id + '.bin')).arrayBuffer());
     const parts = await Promise.all(mix.map(async ([v, w]) => [await voiceData(v), w]));
@@ -238,11 +246,11 @@ function voiceData(id) {
 }
 self.fetch = async (input, init) => {
   const u = String((input && input.url) || input), id = u.startsWith(VOICE_BASE) ? u.slice(VOICE_BASE.length).replace(/\.bin$/, '') : '';
-  if (!BLENDS[id] && !isMix(id)) return _fetch(input, init);
+  if (!BLENDS[id] && !isMix(id) && !isUser(id)) return _fetch(input, init);
   const out = await voiceData(id);
   return new Response(out.slice().buffer, { status: 200, headers: { 'Content-Type': 'application/octet-stream' } });
 };
-function allowBlends(k) { const orig = k._validate_voice.bind(k); k._validate_voice = v => BLENDS[v] || isMix(v) ? v[0] : orig(v); return k; }
+function allowBlends(k) { const orig = k._validate_voice.bind(k); k._validate_voice = v => BLENDS[v] || isMix(v) || isUser(v) ? v[0] : orig(v); return k; }
 let kokoro = null, kokoroP = null, kokoroDevice = '', piperMod = null;
 const queue = []; let running = false, seq = 0;
 const post = (m, t) => self.postMessage(m, t || []);
@@ -311,6 +319,7 @@ function pump() {
 self.onmessage = async ({ data: m }) => {
   try {
     if (m.type === 'gen') { queue.push({ ...m, seq: ++seq }); pump(); }
+    else if (m.type === 'userVoice') { USER_VOICES.set(m.vid, new Float32Array(m.data)); for (const k of [...voiceCache.keys()]) if (k.includes(m.vid)) voiceCache.delete(k); post({ type: 'ok', id: m.id }); }
     else if (m.type === 'clear') { for (let i = queue.length - 1; i >= 0; i--) if (!m.owner || queue[i].owner === m.owner) post({ type: 'dropped', id: queue.splice(i, 1)[0].id }); post({ type: 'ok', id: m.id }); }
     else if (m.type === 'load') {
       if (m.engine === 'test') post({ type: 'ok', id: m.id, device: 'test' });
@@ -380,8 +389,8 @@ const status = m => $('status').textContent = m || '';
 const db = (() => {
   let p;
   const open = () => p ||= new Promise((res, rej) => {
-    try { const r = indexedDB.open('audiobook-reader', 3);
-      r.onupgradeneeded = () => { const d = r.result; if (!d.objectStoreNames.contains('books')) d.createObjectStore('books', { keyPath: 'id' }); if (!d.objectStoreNames.contains('audio')) d.createObjectStore('audio'); if (!d.objectStoreNames.contains('exports')) d.createObjectStore('exports', { keyPath: 'id' }); };
+    try { const r = indexedDB.open('audiobook-reader', 4);
+      r.onupgradeneeded = () => { const d = r.result; if (!d.objectStoreNames.contains('books')) d.createObjectStore('books', { keyPath: 'id' }); if (!d.objectStoreNames.contains('audio')) d.createObjectStore('audio'); if (!d.objectStoreNames.contains('exports')) d.createObjectStore('exports', { keyPath: 'id' }); if (!d.objectStoreNames.contains('uservoices')) d.createObjectStore('uservoices', { keyPath: 'id' }); };
       r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error);
     } catch (e) { rej(e); }
   });
@@ -391,6 +400,7 @@ const db = (() => {
   return { put: b => tx('readwrite', s => s.put(b)), get: id => tx('readonly', s => s.get(id)),
            del: id => tx('readwrite', s => s.delete(id)), all: () => tx('readonly', s => s.getAll()),
            aget: k => tx('readonly', s => s.get(k), 'audio'), aput: (k, v) => tx('readwrite', s => s.put(v, k), 'audio'), aclear: () => tx('readwrite', s => s.clear(), 'audio'),
+           uvput: r => tx('readwrite', s => s.put(r), 'uservoices'), uvall: () => tx('readonly', s => s.getAll(), 'uservoices'), uvdel: id => tx('readwrite', s => s.delete(id), 'uservoices'),
            eput: r => tx('readwrite', s => s.put(r), 'exports'), eall: () => tx('readonly', s => s.getAll(), 'exports'), edel: id => tx('readwrite', s => s.delete(id), 'exports') };
 })();
 const prefs = {
@@ -645,7 +655,7 @@ const NE = {
   },
   reset(msg) {
     try { this.w && this.w.terminate(); } catch {}
-    this.w = null; for (const [, p] of this.waits) p.reject(new Error(msg)); this.waits.clear(); this.cache.clear(); this.ready = {};
+    this.w = null; registered.clear(); for (const [, p] of this.waits) p.reject(new Error(msg)); this.waits.clear(); this.cache.clear(); this.ready = {};
   },
   call(msg) { const id = ++this.seq; return new Promise((resolve, reject) => { this.waits.set(id, { resolve, reject }); this.worker().postMessage({ ...msg, id }); }); },
   onmsg(m) {
@@ -668,7 +678,11 @@ const NE = {
     this.ready[key] = p; p.catch(() => { delete this.ready[key]; hideDl(); });
     return p;
   },
-  gen(engine, voice, text, pri = 0, cache = true, owner = 'play', ctx = null, speed = 1) { // speed 1: Kokoro's natural pace sits within the range of popular audiobook narrators
+  gen(engine, voice, text, pri = 0, cache = true, owner = 'play', ctx = null, speed = 1) {
+    if (engine === 'kokoro' && /[ab]u_/.test(voice) && !String(voice).startsWith('au_c') && !String(voice).startsWith('bu_c')) return ensureUserVoice(voice).then(() => this.gen0(engine, voice, text, pri, cache, owner, ctx, speed));
+    return this.gen0(engine, voice, text, pri, cache, owner, ctx, speed);
+  },
+  gen0(engine, voice, text, pri, cache, owner, ctx, speed) { // speed 1: Kokoro's natural pace sits within the range of popular audiobook narrators
     const k = engine + '|' + voice + '|' + speed + '|' + text;
     if (cache && this.cache.has(k)) return this.cache.get(k);
     const p = engine === 'eleven' ? EL.gen(voice, text, owner, ctx) : this.call({ type: 'gen', engine, voice, text, pri, owner, speed, gpu: useGPU() }).then(m => {
@@ -681,6 +695,7 @@ const NE = {
     }
     return p;
   },
+  setUserVoice(vid, data) { return this.call({ type: 'userVoice', vid, data: new Float32Array(data) }); },
   clear(owner = 'play') { EL.clear(owner); if (this.w) return this.call({ type: 'clear', owner }).catch(() => {}); },
   rtf() { return this.stats.sec ? (this.stats.ms / 1000) / this.stats.sec : 0; } // <1 means faster than real time
 };
@@ -1159,7 +1174,7 @@ async function fillVoices() {
     showCredits();
   } else if (e === 'kokoro') {
     const grade = g => 'ABCDF'.indexOf((g || 'C')[0]);
-    const list = (kokoroList || KOKORO_FALLBACK).slice().sort((a, b) => (b.id === 'bm_raconteur_v2') - (a.id === 'bm_raconteur_v2') || (b.own ? 1 : 0) - (a.own ? 1 : 0) || grade(a.overallGrade) - grade(b.overallGrade));
+    const list = userVoices.map(u => ({ id: u.id, name: 'My voice (only on this device)', own: true, mine: true })).concat((kokoroList || KOKORO_FALLBACK).slice()).sort((a, b) => (b.mine ? 1 : 0) - (a.mine ? 1 : 0) || (b.id === 'bm_raconteur_v2') - (a.id === 'bm_raconteur_v2') || (b.own ? 1 : 0) - (a.own ? 1 : 0) || grade(a.overallGrade) - grade(b.overallGrade));
     const accent = id => id[0] === 'b' ? 'British' : 'American', sex = id => id[1] === 'f' ? 'female' : 'male';
     list.forEach(v => sel.add(new Option(v.own ? '★ ' + v.name : `${v.name || v.id.split('_')[1].replace(/^./, c => c.toUpperCase())}: ${accent(v.id)} ${sex(v.id)}${v.overallGrade ? ' · grade ' + v.overallGrade : ''}${v.traits ? ' ' + v.traits : ''}`, v.id)));
     sel.value = list.some(v => v.id === saved) ? saved : 'bm_raconteur_v2'; // the user's chosen default narrator
@@ -1431,6 +1446,47 @@ async function renderExports() {
   }
 }
 
+// ---------- my voice (personal voice file, kept only on this device) ----------
+let userVoices = []; // { id, name, lang, data: ArrayBuffer, added }
+const isUserVoice = id => /^[ab]u_/.test(id || '');
+const registered = new Set();
+async function loadUserVoices() { userVoices = (await db.uvall()) || []; }
+async function ensureUserVoice(id) {
+  const base = String(id).split('__').map(t => t.replace(/^[ab]x_mix$/, '').replace(/-\d+$/, '')).filter(isUserVoice);
+  if (isUserVoice(id)) base.push(id);
+  for (const vid of base) { if (registered.has(vid)) continue; const v = userVoices.find(u => u.id === vid); if (!v) throw new Error('Your personal voice is not on this device. Add it again in ⤓ Audio → My voice.'); await NE.setUserVoice(vid, v.data); registered.add(vid); }
+}
+async function addUserVoice(file) {
+  const buf = await file.arrayBuffer();
+  if (buf.byteLength !== 522240) { $('myVoiceInfo').textContent = 'That is not a voice file for this app (it should be about 510 KB, ending in .bin).'; return; }
+  const f = new Float32Array(buf); if (!f.every(Number.isFinite)) { $('myVoiceInfo').textContent = 'That voice file is damaged.'; return; }
+  let h = 0; for (let i = 0; i < f.length; i += 97) h = (h * 31 + Math.round(f[i] * 1e4)) | 0;
+  const lang = /_b\.bin$/i.test(file.name) ? 'b' : 'a', id = `${lang}u_me_${(h >>> 0).toString(36)}`;
+  await db.uvput({ id, name: 'My voice', lang, data: buf, added: Date.now() }); await loadUserVoices();
+  prefs.set('voice.kokoro', id); renderMyVoices();
+  $('myVoiceInfo').textContent = 'Added. Your voice is now the Kokoro narrator, and character voices are shades of it.';
+  if (engineName() !== 'kokoro') { $('engine').value = 'kokoro'; $('engine').onchange(); } else fillVoices();
+}
+function renderMyVoices() {
+  const ul = $('myVoices'); ul.innerHTML = '';
+  for (const v of userVoices) {
+    const li = document.createElement('li'), t = document.createElement('span'), acts = document.createElement('span');
+    t.className = 't'; t.textContent = `★ ${v.name} · ${v.lang === 'b' ? 'British' : 'American'} accent · added ${new Date(v.added).toLocaleDateString()}`; acts.className = 'acts';
+    const mk = (label, fn) => { const b = document.createElement('button'); b.className = 'btn sm'; b.textContent = label; b.onclick = fn; acts.appendChild(b); };
+    mk('Use', () => { prefs.set('voice.kokoro', v.id); if (engineName() !== 'kokoro') { $('engine').value = 'kokoro'; $('engine').onchange(); } else { fillVoices(); } });
+    mk('Save a backup copy', () => downloadBlob(new Blob([v.data], { type: 'application/octet-stream' }), `myvoice_${v.lang}.bin`));
+    mk('Remove', async () => {
+      if (!confirm('Remove your voice from this device?')) return;
+      await db.uvdel(v.id); registered.delete(v.id);
+      try { const c = await caches.open('kokoro-voices'); for (const k of await c.keys()) if (k.url.includes(v.id)) await c.delete(k); } catch {}
+      await loadUserVoices(); renderMyVoices(); if ($('voice').value === v.id) { prefs.set('voice.kokoro', ''); fillVoices(); }
+      $('myVoiceInfo').textContent = 'Your voice was removed from this device.';
+    });
+    li.append(t, acts); ul.appendChild(li);
+  }
+}
+$('myVoiceFile').onchange = e => { const f = e.target.files[0]; if (f) addUserVoice(f); e.target.value = ''; };
+
 // ---------- install & share ----------
 let installEvt = null;
 const appUrl = () => location.origin + location.pathname.replace(/index\.html$/, '');
@@ -1505,7 +1561,7 @@ async function refreshDiag() {
     $('storage').textContent = `This site is using ${(est.usage / 1e6).toFixed(0)} MB of storage. Downloaded: ${prefs.get('dl', []).map(k => k.replace('piper|', 'Piper ')).join(', ') || 'none yet'}.`;
   } catch { $('storage').textContent = 'Storage info unavailable.'; }
 }
-function openAudio() { refreshDiag(); renderExports(); renderCast(); offlineInfo(); if (!$('audioDlg').open) $('audioDlg').showModal(); }
+function openAudio() { refreshDiag(); renderExports(); renderCast(); offlineInfo(); renderMyVoices(); if (!$('audioDlg').open) $('audioDlg').showModal(); }
 $('audioBtn').onclick = openAudio;
 function elKeyState() { $('elKey').placeholder = EL.key() ? 'Key saved (paste a new one to replace)' : 'ElevenLabs API key'; if (!EL.key()) $('elInfo').textContent = 'No key saved.'; }
 $('elSave').onclick = async () => {
@@ -1609,7 +1665,7 @@ const canNeural = typeof Worker !== 'undefined' && typeof WebAssembly !== 'undef
 if (!canNeural) { [...$('engine').options].forEach(o => { if (o.value !== 'browser') o.disabled = true; }); }
 $('engine').value = canNeural ? prefs.get('engine', 'kokoro') : 'browser';
 if (synth) synth.onvoiceschanged = () => { if (engineName() === 'browser') fillVoices(); };
-fillVoices();
+loadUserVoices().finally(fillVoices);
 try { navigator.storage && navigator.storage.persist && navigator.storage.persist(); } catch {}
 if (window.innerWidth <= 760) $('side').classList.add('hide');
 renderLib();

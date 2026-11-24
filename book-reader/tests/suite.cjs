@@ -325,6 +325,26 @@ add('Share', '32. iPhone: Get & share shows Add-to-Home-Screen steps', async p =
   return t.replace(/\s+/g, ' ').slice(0, 70);
 }, { iphone: true });
 
+add('My voice', '33. Personal voice: import, listed first, backup, never sent over the network, bad file rejected, remove', async p => {
+  const sent = []; p.on('request', r => { if (/u_me_/.test(r.url()) || (r.postData() || '').length > 400000) sent.push(r.url()); });
+  const data = Buffer.alloc(522240); for (let i = 0; i < data.length; i += 4) data.writeFloatLE(Math.sin(i) * 0.1, i);
+  await p.click('#audioBtn');
+  await p.setInputFiles('#myVoiceFile', { name: 'notes.bin', mimeType: 'application/octet-stream', buffer: Buffer.from('nope') }); await p.waitForTimeout(300);
+  assert(/not a voice file/.test(await p.textContent('#myVoiceInfo')), 'bad file not rejected');
+  await p.setInputFiles('#myVoiceFile', { name: 'myvoice_a.bin', mimeType: 'application/octet-stream', buffer: data }); await p.waitForTimeout(800);
+  assert(/Added/.test(await p.textContent('#myVoiceInfo')), await p.textContent('#myVoiceInfo'));
+  const first = await p.$eval('#voice', s => ({ v: s.value, t: s.options[0].text })); assert(/^au_me_/.test(first.v) && /My voice/.test(first.t), 'not selected/first: ' + JSON.stringify(first));
+  assert((await p.$$('#myVoices li')).length === 1, 'not listed');
+  const [d] = await Promise.all([p.waitForEvent('download'), p.click('#myVoices li button:has-text("Save a backup copy")')]);
+  assert(fs.statSync(await d.path()).size === 522240, 'backup size');
+  await p.reload(); await p.waitForTimeout(800); await p.selectOption('#engine', 'kokoro'); await p.waitForTimeout(300);
+  assert(/^au_me_/.test(await p.$eval('#voice', s => s.value)), 'not kept after reload');
+  await p.click('#audioBtn'); await p.click('#myVoices li button:has-text("Remove")'); await p.waitForTimeout(500);
+  assert((await p.$$('#myVoices li')).length === 0, 'not removed');
+  assert(!sent.length, 'personal voice sent over network: ' + sent.join(','));
+  return 'import/backup/persist/remove ok; nothing sent over the network';
+});
+
 // ---------- ElevenLabs (mocked API: no real credits used) ----------
 function wavBuf(n, sr = 44100) { const b = Buffer.alloc(44 + n * 2); b.write('RIFF', 0); b.writeUInt32LE(36 + n * 2, 4); b.write('WAVEfmt ', 8); b.writeUInt32LE(16, 16); b.writeUInt16LE(1, 20); b.writeUInt16LE(1, 22); b.writeUInt32LE(sr, 24); b.writeUInt32LE(sr * 2, 28); b.writeUInt16LE(2, 32); b.writeUInt16LE(16, 34); b.write('data', 36); b.writeUInt32LE(n * 2, 40); return b; }
 async function castSet(p, name, idx, value) { // pick a cast row by its exact name label, then set its n-th menu
