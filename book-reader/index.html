@@ -606,6 +606,7 @@ function friendly(e, name) {
 }
 async function loadBook(b, persist = true) {
   book = b; flat = b.chapters.map(c => c.paras.flat());
+  emoMemo = [];
   pend = b.chapters.map(c => { const s = new Set(); let k = 0; for (const p of c.paras) { k += p.length; s.add(k - 1); } return s; });
   chLen = flat.map(a => a.reduce((n, t) => n + t.length + 1, 0)); tailLen = []; for (let c = flat.length - 1, acc = 0; c >= 0; c--) { tailLen[c] = acc; acc += chLen[c]; }
   const pos = prefs.get('pos.' + b.id, null) || { ch: b.ch || 0, si: b.si || 0 }; b.ch = pos.ch; b.si = pos.si;
@@ -699,12 +700,12 @@ const NE = {
     this.ready[key] = p; p.catch(() => { delete this.ready[key]; hideDl(); });
     return p;
   },
-  gen(engine, voice, text, pri = 0, cache = true, owner = 'play', ctx = null, speed = 1) {
-    if (engine === 'kokoro' && /[ab]u_/.test(voice) && !String(voice).startsWith('au_c') && !String(voice).startsWith('bu_c')) return ensureUserVoice(voice).then(() => this.gen0(engine, voice, text, pri, cache, owner, ctx, speed));
-    return this.gen0(engine, voice, text, pri, cache, owner, ctx, speed);
+  gen(engine, voice, text, pri = 0, cache = true, owner = 'play', ctx = null, speed = 1, lower = null) {
+    if (engine === 'kokoro' && /[ab]u_/.test(voice) && !String(voice).startsWith('au_c') && !String(voice).startsWith('bu_c')) return ensureUserVoice(voice).then(() => this.gen0(engine, voice, text, pri, cache, owner, ctx, speed, lower));
+    return this.gen0(engine, voice, text, pri, cache, owner, ctx, speed, lower);
   },
-  gen0(engine, voice, text, pri, cache, owner, ctx, speed) { // speed 1: Kokoro's natural pace sits within the range of popular audiobook narrators
-    const deep = engine === 'kokoro' ? DEEPEN[voice] || 0 : 0, f = 2 ** (deep / 12); // deeper narrator: lower the whole voice a little
+  gen0(engine, voice, text, pri, cache, owner, ctx, speed, lower = null) { // speed 1: Kokoro's natural pace sits within the range of popular audiobook narrators
+    const deep = engine === 'kokoro' ? (lower != null ? lower : DEEPEN[voice] || 0) : 0, f = 2 ** (deep / 12); // deeper narrator: lower the whole voice a little
     if (deep) speed *= f;                                                             // (spoken faster, then slowed back down = same pace, lower voice)
     if (engine === 'kokoro' && prefs.get('steady', true) && !/^[ab]s_v\d+__/.test(voice)) voice = voice[0] + 's_v2__' + voice; // same narrator at every sentence length
     const k = engine + '|' + voice + '|' + speed + '|' + text;
@@ -833,13 +834,69 @@ const speakable = t => /[\p{L}\p{N}]/u.test(t);
 // The narrator's own voice reads everything, dialogue included (separate character voices were removed).
 function resample(x, from, to) { if (from === to) return x; const n = Math.round(x.length * to / from), o = new Float32Array(n), r = from / to; for (let i = 0; i < n; i++) { const t = i * r, k = Math.floor(t), f = t - k; o[i] = (x[k] || 0) * (1 - f) + (x[k + 1] || 0) * f; } return o; }
 const sentParts = (c, s) => [{ t: flat[c][s], who: '' }];
-const singleVoiceKey = (c, s, e, v) => v;
+const singleVoiceKey = (c, s, e, v) => v + '|' + (storyMode() ? emoOf(c, s).key : '');
 const DEEPEN = { am_narrator_v1: 1.2 }; // semitones lower: a bigger, richer chest voice for the narrator
 const NARR_SPEED = 1.05; // words at ~180 wpm; with natural pauses the overall pace lands at ~150-160 wpm like professional narrators
 async function genChunk(e, v, c, s, j, pri, cache, owner) {
-  const r = await NE.gen(e, v, chunkText(c, s, j), pri, cache, owner, ctxFor(c, s, j), e === 'kokoro' ? NARR_SPEED : 1);
-  return { pcm: r.pcm, sr: r.sr, gain: 0 };
+  const em = storyMode() ? emoOf(c, s) : EMO_NONE, p = em.p;
+  if (e !== 'kokoro') { const r = await NE.gen(e, v, chunkText(c, s, j), pri, cache, owner, ctxFor(c, s, j), 1); return { pcm: r.pcm, sr: r.sr, gain: p.gain }; }
+  // The narrator acts the mood: pace, pitch, loudness and a touch of a brighter/darker voice colour.
+  const voice = p.mix && !/^[ab]u_/.test(v) ? `${v[0]}x_mix__${v}-${100 - p.mix[1]}__${p.mix[0]}-${p.mix[1]}` : v;
+  const r = await NE.gen(e, voice, chunkText(c, s, j), pri, cache, owner, ctxFor(c, s, j), +(NARR_SPEED * p.rate).toFixed(3), +((DEEPEN[v] || 0) - p.pitch).toFixed(2));
+  return { pcm: r.pcm, sr: r.sr, gain: p.gain };
 }
+
+// ---------- Emotion: the narrator hears what the text is doing and plays it ----------
+// Each sentence is read in context (its own words, punctuation, and the mood of the sentences just before it in the
+// paragraph) and gets a mood and a strength. Moods are acted the way audiobook narrators do: sad = slower, lower,
+// softer, longer pauses; excited = quicker, brighter, louder, tighter pauses; sarcastic = a dry, slightly lifted
+// delivery with a beat before the punchline; awe = hushed, slow, spacious; serious = lower, deliberate, weighty.
+// Moods carry over gently from sentence to sentence, so the voice never jumps.
+const EMO_PROFILES = { //   rate  pitch(st) gain(dB) pause  voice colour
+  sad:       { rate: 0.85, pitch: -1.2, gain: -3.0, pause: 1.45, mix: null },
+  excited:   { rate: 1.12, pitch: 1.3,  gain: 2.5,  pause: 0.75, mix: ['am_puck', 35] },
+  sarcastic: { rate: 0.93, pitch: 0.7,  gain: 0,    pause: 1.3,  mix: ['am_puck', 20] },
+  awe:       { rate: 0.84, pitch: -0.6, gain: -2.5, pause: 1.5,  mix: null },
+  serious:   { rate: 0.92, pitch: -1.0, gain: 1.0,  pause: 1.2,  mix: ['am_onyx', 30] }
+};
+const EMO_NONE = { key: '', mood: '', level: 0, p: { rate: 1, pitch: 0, gain: 0, pause: 1, mix: null } };
+const EMO_WORDS = {
+  sad: 'died die dies dying death dead grave funeral grief grieve grieving mourn mourned mourning tears tear wept weep weeping cried cry crying sob sobbed sobbing sorrow sorrowful sad sadly sadness lonely loneliness alone lost loss broken heartbreak heartbroken goodbye farewell miss missed missing regret regretted ache ached aching empty emptiness hollow buried bury pain painful hurt hurting despair hopeless abandoned orphan widow widowed suffer suffered suffering misery miserable gone forgotten bleak weary',
+  excited: 'amazing incredible unbelievable suddenly finally yes wow won win winning victory triumph cheered cheer cheering thrilled thrilling excited exciting rushed raced ran sprinted burst exploded leapt leaped jumped shouted laughed laughing celebrate celebrated hurry quickly faster fast breakthrough jackpot fantastic',
+  awe: 'vast endless infinite eternal eternity stars heavens heaven sky majestic majesty glory glorious magnificent splendid splendor wonder wonders wondrous marvel marvelous breathtaking awe awesome ancient sacred holy divine god creation creator universe cosmos ocean horizon mountains beauty beautiful radiant shimmering immense boundless miracle miraculous',
+  serious: 'must danger dangerous warning warn threat threatened careful truth true never war blood fear feared afraid dark darkness cold gun knife kill killed enemy crisis urgent consequence consequences responsibility responsible debt risk risky ruin ruined collapse failure fail failed lose bankrupt poverty serious seriously critical grave dead silence silent law guilty justice wrong mistake mistakes discipline sacrifice cost costs price'
+};
+const EMO_SETS = Object.fromEntries(Object.entries(EMO_WORDS).map(([k, w]) => [k, new Set(w.split(' '))]));
+const SARCASM = /\b(oh,? (great|wonderful|lovely|perfect|brilliant|fantastic|joy|sure)|of course\b[^!?]*\.|obviously\b|naturally,|how (nice|lovely|convenient|wonderful)|what a (surprise|shock|treat)|yeah,? right|as if\b|sure,? (it is|you did|he did|she did)|just (great|perfect|wonderful)|because that (always|ever) works|clearly,|just what (we|i|you|they) needed|exactly what (we|i|you|they) needed)/i;
+function emoScores(t) {
+  const sc = { sad: 0, excited: 0, awe: 0, serious: 0, sarcastic: 0 }, w = (t.toLowerCase().match(/[a-z']+/g) || []);
+  for (const x of w) for (const k in EMO_SETS) if (EMO_SETS[k].has(x)) sc[k] += 1;
+  const bang = (t.match(/!/g) || []).length; sc.excited += Math.min(2.4, bang * 1.5);
+  if (/(\.\.\.|…)\s*$/.test(t) && sc.sad) sc.sad += 0.5;
+  if (SARCASM.test(t)) sc.sarcastic += 2.6;
+  if (/\b(never|always)\b/i.test(t) && /\.$/.test(t.trim()) && sc.serious) sc.serious += 0.3;
+  if (/\b(look|imagine|behold)\b/i.test(t) && sc.awe) sc.awe += 0.5;
+  return sc;
+}
+let emoMemo = [];
+function emoChapter(c) {
+  if (emoMemo[c]) return emoMemo[c];
+  const out = [], carry = { sad: 0, excited: 0, awe: 0, serious: 0, sarcastic: 0 };
+  flat[c].forEach((t, i) => {
+    const own = emoScores(t), tot = {};
+    for (const k in own) tot[k] = own[k] + carry[k];
+    let best = '', bv = 0; for (const k in tot) if (tot[k] > bv) { bv = tot[k]; best = k; }
+    const v = best ? tot[best] : 0, level = v >= 2.5 ? 1 : v >= 1.5 ? 0.6 : 0; // one stray word is not a mood
+    out.push(level ? mkEmo(best, level) : EMO_NONE);
+    for (const k in carry) carry[k] = pend[c].has(i) ? 0 : (carry[k] + own[k]) * 0.5; // mood lingers within a paragraph, fades after it
+  });
+  return (emoMemo[c] = out);
+}
+function mkEmo(mood, level) {
+  const P = EMO_PROFILES[mood], L = level;
+  return { key: mood + L, mood, level: L, p: { rate: +(1 + (P.rate - 1) * L).toFixed(3), pitch: +(P.pitch * L).toFixed(2), gain: +(P.gain * L).toFixed(2), pause: +(1 + (P.pause - 1) * L).toFixed(3), mix: P.mix ? [P.mix[0], Math.round(P.mix[1] * L)] : null } };
+}
+const emoOf = (c, s) => (flat[c] && flat[c][s] != null ? emoChapter(c)[s] : EMO_NONE) || EMO_NONE;
 
 // ---------- "Storyteller" narration style ----------
 // Measured from a 40 s professional narration sample: three pause tiers (~0.12 s breath, ~0.3 s sentence,
@@ -850,7 +907,7 @@ const wordsIn = t => (t.match(/[\p{L}\p{N}'’-]+/gu) || []).length;
 const endsWith = (t, re) => re.test(t.replace(/["”’'»)\]]+$/, ''));
 const hash01 = t => { let h = 2166136261; for (let i = 0; i < t.length; i++) h = Math.imul(h ^ t.charCodeAt(i), 16777619); return ((h >>> 0) % 10000) / 10000; };
 function styleGap(c, s, exact = false) {
-  const g0 = styleGapBase(c, s); return exact || !storyMode() ? g0 : +(g0 * (0.85 + 0.3 * hash01(flat[c][s]))).toFixed(3); // humans never pause identically
+  const g0 = storyMode() ? +(styleGapBase(c, s) * emoOf(c, s).p.pause).toFixed(3) : styleGapBase(c, s); return exact || !storyMode() ? g0 : +(g0 * (0.85 + 0.3 * hash01(flat[c][s]))).toFixed(3); // humans never pause identically
 }
 function styleGapBase(c, s) {
   const t = flat[c][s], nxt = s + 1 < flat[c].length ? flat[c][s + 1] : null, para = pend[c].has(s);
@@ -1523,7 +1580,7 @@ try { navigator.storage && navigator.storage.persist && navigator.storage.persis
 if (window.innerWidth <= 760) $('side').classList.add('hide');
 renderLib();
 // test hook (harmless): exposes internals for automated checks
-window.__abr = { NE, cutStats, parts: (c, s) => sentParts(c, s), styleGap, styleRate, speechText, chunkEnd: (c, s) => chunkEnd(c, s, engineName()), get state() { return { ch, si, playing, engine: engineName() }; } };
+window.__abr = { NE, cutStats, emo: (c, s) => emoOf(c, s), parts: (c, s) => sentParts(c, s), styleGap, styleRate, speechText, chunkEnd: (c, s) => chunkEnd(c, s, engineName()), get state() { return { ch, si, playing, engine: engineName() }; } };
 })();
 </script>
 </body>

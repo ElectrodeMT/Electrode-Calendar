@@ -260,6 +260,15 @@ add('Narrator', '28. One narrator reads everything: dialogue uses the narrator v
   await p.click('#play'); await p.waitForFunction(() => __abr.state.si >= 2, null, { timeout: 15000 }); await p.click('#play');
   return `${r.parts.length} sentences, all narrator`;
 });
+add('Narrator', '34. Emotion: sad, excited, sarcastic, awe and serious passages are each acted; neutral lines stay neutral', async p => {
+  await open(p, 'emotion.txt');
+  const m = await p.evaluate(() => [...document.querySelectorAll('#text .s')].map((x, i) => [x.textContent.trim().slice(0, 18), __abr.emo(0, i).mood]));
+  const want = { 'She wept for a lon': 'sad', '"We actually won!': 'excited', '"Oh, wonderful," s': 'sarcastic', 'Above her the star': 'awe', 'If the debt was no': 'serious', 'The house was quie': '', 'That night she cli': '' };
+  for (const [k, v] of m) if (k in want) assert(want[k] === v, `"${k}" read as "${v}", expected "${want[k] || 'neutral'}"`);
+  const g = await p.evaluate(() => [__abr.styleGap(0, 4, true), __abr.styleGap(0, 2, true)]);
+  assert(g[0] > g[1], 'sad lines should get longer pauses');
+  return m.map(x => x[1] || '-').join(' ');
+});
 add('Offline', '30. Make available offline, then with the network blocked: app loads, opens Word/text, plays, exports MP3', async p => {
   await p.waitForFunction(() => navigator.serviceWorker.controller, null, { timeout: 15000 });
   await p.click('#audioBtn'); await p.uncheck('#offKokoro'); await p.click('#offGo');
