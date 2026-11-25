@@ -269,6 +269,22 @@ add('Narrator', '34. Emotion: sad, excited, sarcastic, awe and serious passages 
   assert(g[0] > g[1], 'sad lines should get longer pauses');
   return m.map(x => x[1] || '-').join(' ');
 });
+add('Narration', '35. PDF like a real book: no running headers/page numbers/footnote markers, sentences flow across pages, real chapters', async p => {
+  await open(p, 'book-layout.pdf');
+  const toc = await chs(p); assert(toc.length === 3 && /Chapter One/.test(toc[0]), 'chapters: ' + toc.join(' | '));
+  const r = await p.evaluate(() => { const ps = [...document.querySelectorAll('#text p')].map(x => x.textContent.trim()); return { n: ps.length, txt: ps.join(' '), broken: ps.filter(x => !/[.!?"”:]$/.test(x) || /^[a-z]/.test(x)).length }; });
+  assert(!/Wealth Buried/.test(r.txt), 'running header read aloud'); assert(!/sentences\s?\d/.test(r.txt), 'footnote marker read aloud');
+  assert(r.n === 14 && r.broken === 0, `paragraphs ${r.n}, broken ${r.broken}`);
+  return `3 chapters, 14 clean paragraphs in chapter 1`;
+});
+add('Narration', '36. Numbers, money, units and symbols are said the way a narrator says them; pronunciation dictionary works', async p => {
+  const cases = { 'They raised $2.5 million.': 'They raised 2.5 million dollars.', 'Revenue hit $500K.': 'Revenue hit 500 thousand dollars.', 'It was 72°F outside.': 'It was 72 degrees Fahrenheit outside.', 'Room No. 5 is open.': 'Room number 5 is open.', 'She lives in St. Louis.': 'She lives in Saint Louis.', 'Climb Mt. Everest.': 'Climb Mount Everest.', 'About 2/3 agree.': 'About two thirds agree.', 'Read pages 12-15.': 'Read pages 12 to 15.', 'Call 555-1234 now.': 'Call 555-1234 now.', 'He ran 5km today.': 'He ran 5 kilometers today.', 'It works [12].': 'It works.' };
+  const got = await p.evaluate(c => Object.fromEntries(Object.keys(c).map(k => [k, __abr.speechText(k)])), cases);
+  for (const [k, v] of Object.entries(cases)) assert(got[k] === v, `"${k}" -> "${got[k]}", expected "${v}"`);
+  await p.click('#audioBtn'); await p.fill('#pronBox', 'Gizaw = Gee-zow\nIbid ='); await p.keyboard.press('Escape');
+  const s = await p.evaluate(() => __abr.speechText('Ibid. Gizaw wrote it.')); assert(s === 'Gee-zow wrote it.', s);
+  return `${Object.keys(cases).length} cases + dictionary`;
+});
 add('Offline', '30. Make available offline, then with the network blocked: app loads, opens Word/text, plays, exports MP3', async p => {
   await p.waitForFunction(() => navigator.serviceWorker.controller, null, { timeout: 15000 });
   await p.click('#audioBtn'); await p.uncheck('#offKokoro'); await p.click('#offGo');

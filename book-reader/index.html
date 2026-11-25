@@ -196,6 +196,9 @@ dialog p{margin:6px 0;font-size:14px;color:var(--muted)}
   <div class="r"><button class="btn primary" id="offGo">Make available offline</button></div>
   <div class="bar hide" id="offBar"><i></i></div>
   <p id="offStatus"></p>
+  <h4>Pronunciations</h4>
+  <p>Fix any word the narrator says wrong, one per line: <code>word = how to say it</code>. Leave the right side empty to skip a word. Example: <code>Gizaw = Gee-zow</code></p>
+  <textarea id="pronBox" rows="4" style="width:100%;font:14px/1.4 ui-monospace,monospace;border:1px solid var(--line);border-radius:8px;padding:8px;background:var(--panel);color:var(--ink)" placeholder="Hermione = her-MY-oh-nee"></textarea>
   <h4>Speed & hardware</h4>
   <div class="r"><label class="opt"><input type="checkbox" id="gpu"> Use the GPU for Kokoro (much faster, but a 326 MB download instead of 92 MB)</label></div>
   <p id="diag"></p>
@@ -498,20 +501,47 @@ const rtfToText = rtf => rtf.replace(/\\par[d]?/g, '\n\n').replace(/\\'([0-9a-f]
 // ---------- format readers ----------
 async function readPDF(buf) {
   await loadScript(LIBS.pdf); pdfjsLib.GlobalWorkerOptions.workerSrc = LIBS.pdfWorker;
-  const pdf = await pdfjsLib.getDocument({ data: buf }).promise; const out = [];
+  const pdf = await pdfjsLib.getDocument({ data: buf }).promise, pages = [];
+  // 1) Lines with position and font size, so page furniture can be told apart from the book's text.
   for (let i = 1; i <= pdf.numPages; i++) {
     status(`Reading PDF page ${i}/${pdf.numPages}…`);
-    const tc = await (await pdf.getPage(i)).getTextContent(); let t = '', lastY = null;
+    const page = await pdf.getPage(i), H = page.getViewport({ scale: 1 }).height, tc = await page.getTextContent(), lines = [];
+    let cur = null;
     for (const it of tc.items) {
-      const y = it.transform ? it.transform[5] : null;
-      if (lastY !== null && y !== null && Math.abs(y - lastY) > 18) t += '\n\n';
-      t += it.str + (it.hasEOL ? '\n' : ''); lastY = y;
+      if (!it.transform) continue; const y = it.transform[5], size = Math.hypot(it.transform[2], it.transform[3]) || it.height || 10;
+      if (!cur || Math.abs(y - cur.y) > Math.max(2, size * 0.4)) { if (cur && cur.parts.length) lines.push(cur); cur = { y, parts: [] }; }
+      cur.parts.push({ s: it.str, size }); if (it.hasEOL) { lines.push(cur); cur = null; }
     }
-    t = t.replace(/-\n(\w)/g, '$1').replace(/([^\n])\n(?!\n)/g, '$1 ');
-    const c = chapter(`Page ${i}`, t); if (c) out.push(c);
+    if (cur && cur.parts.length) lines.push(cur);
+    pages.push({ H, lines: lines.map(l => ({ y: l.y, parts: l.parts, text: l.parts.map(p => p.s).join('').replace(/\s+/g, ' ').trim(), size: Math.max(...l.parts.map(p => p.size)) })).filter(l => l.text) });
   }
-  if (!out.length) { status('No text layer found, so running OCR on the PDF pages (slow)…'); return ocrPDF(pdf); }
-  return out;
+  const all = pages.flatMap(p => p.lines); if (!all.length) { status('No text layer found, so running OCR on the PDF pages (slow)…'); return ocrPDF(pdf); }
+  // 2) Running headers/footers & page numbers: lines in the top/bottom band that repeat across pages (digits ignored).
+  const key = t => t.toLowerCase().replace(/\d+/g, '#').replace(/\s+/g, ' ').trim(), band = (p, l) => l.y > p.H * 0.91 || l.y < p.H * 0.09, seen = new Map();
+  for (const p of pages) for (const k of new Set(p.lines.filter(l => band(p, l)).map(l => key(l.text)))) seen.set(k, (seen.get(k) || 0) + 1);
+  const rep = Math.max(2, Math.round(pages.length * 0.25));
+  const isFurniture = (p, l) => band(p, l) && (seen.get(key(l.text)) >= rep || /^(page\s*)?[#\divxlc]+(\s*(of|\/)\s*\d+)?$/i.test(l.text.replace(/\d+/g, '#').replace(/#/g, '1')));
+  const sizes = all.map(l => l.size).sort((a, b) => a - b), body = sizes[Math.floor(sizes.length / 2)] || 10;
+  // 3) Stitch pages into flowing paragraphs: drop furniture and tiny superscript note markers, mend hyphenated words,
+  //    keep sentences whole across page breaks, and mark large short lines as headings (chapters).
+  const lens = all.map(l => l.text.length).sort((a, b) => a - b), full = lens[Math.floor(lens.length * 0.75)] || 60;
+  let text = '', open = false, lastLen = full;
+  for (const p of pages) {
+    let lastY = null, lastSize = body;
+    if (open && /[.!?"”]$/.test(text) && lastLen < full * 0.85) { text += '\n\n'; open = false; } // the page ended with a paragraph's short last line
+    for (const l of p.lines) {
+      if (isFurniture(p, l)) continue;
+      const t = l.parts.filter(q => !(q.size < body * 0.75 && /^\s*[\d*†‡§]+\s*$/.test(q.s))).map(q => q.s).join('').replace(/\s+/g, ' ').trim(); if (!t) continue;
+      if (l.size < body * 0.85 && l.y < p.H * 0.3 && /^(\d+|[*†‡])\s/.test(t)) continue; // footnote at the bottom of the page
+      const words = t.split(' ').length;
+      if (l.size >= body * 1.3 && words <= 12 && !/[.,;]$/.test(t)) { text += (open ? '\n\n' : '') + '# ' + t + '\n\n'; open = false; lastY = l.y; continue; }
+      const gap = lastY === null ? 0 : lastY - l.y;
+      if (open && (gap > Math.max(lastSize, l.size) * 1.9 || (lastY !== null && /[.!?:"”]$/.test(text) && gap > l.size * 1.45))) { text += '\n\n'; open = false; }
+      if (open) text = /[A-Za-z]-$/.test(text) && /^[a-z]/.test(t) ? text.slice(0, -1) + t : text + ' ' + t; else { text += t; open = true; }
+      lastY = l.y; lastSize = l.size; lastLen = t.length;
+    }
+  }
+  return splitPlain(text, 'Document');
 }
 async function ocrPDF(pdf) {
   await loadScript(LIBS.tesseract); const w = await Tesseract.createWorker('eng'); const out = [];
@@ -947,8 +977,34 @@ function chunkEnd(c, s, e) {
 }
 const ROMAN = { I: 1, V: 5, X: 10, L: 50, C: 100 };
 const romanToInt = r => { let n = 0; for (let i = 0; i < r.length; i++) { const v = ROMAN[r[i]], w = ROMAN[r[i + 1]] || 0; n += v < w ? -v : v; } return n; };
+const UNITS = { km: 'kilometers', kg: 'kilograms', cm: 'centimeters', mm: 'millimeters', mph: 'miles per hour', kph: 'kilometers per hour', lbs: 'pounds', lb: 'pounds', oz: 'ounces', ft: 'feet', mi: 'miles', hrs: 'hours', hr: 'hours', mins: 'minutes', min: 'minutes', sec: 'seconds', ml: 'milliliters', GB: 'gigabytes', MB: 'megabytes', TB: 'terabytes', kWh: 'kilowatt hours' };
+const MONTHS = { Jan: 'January', Feb: 'February', Mar: 'March', Apr: 'April', Jun: 'June', Jul: 'July', Aug: 'August', Sep: 'September', Sept: 'September', Oct: 'October', Nov: 'November', Dec: 'December' };
+const FRACS = { '1/2': 'one half', '1/3': 'one third', '2/3': 'two thirds', '1/4': 'one quarter', '3/4': 'three quarters', '1/5': 'one fifth', '1/10': 'one tenth' };
+const BIG = { K: 'thousand', k: 'thousand', M: 'million', B: 'billion', T: 'trillion', thousand: 'thousand', million: 'million', billion: 'billion', trillion: 'trillion' };
+let pronRules = null; // user's pronunciation dictionary: "word = how to say it" (a blank right side skips the word)
+function pronounce(t) {
+  if (!pronRules) pronRules = String(prefs.get('pron', '')).split('\n').map(l => l.split('=')).filter(p => p.length === 2 && p[0].trim())
+    .map(([a, b]) => [new RegExp('(^|[^\\p{L}\\p{N}])' + a.trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '(?=$|[^\\p{L}\\p{N}])', 'giu'), b.trim()]);
+  for (const [re, say] of pronRules) t = t.replace(re, (m, p) => p + say);
+  return pronRules.length ? t.replace(/^\s*[.,;:]+\s*/, '').replace(/\s+([.,;:!?])/g, '$1').replace(/([.!?])\.+/g, '$1').replace(/\s{2,}/g, ' ') : t;
+}
+function normalizeForSpeech(t) { // the things neural voices usually stumble on, rewritten the way a narrator says them
+  return pronounce(t)
+    .replace(/\s*\[(\d+([,–-]\s?\d+)*)\]/g, '')                                              // citation markers [12] [3, 4]
+    .replace(/([$£€])\s?(\d[\d,]*(?:\.\d+)?)\s?(K|k|M|B|T|thousand|million|billion|trillion)\b/g, (m, c, n, b) => `${n} ${BIG[b]} ${c === '$' ? 'dollars' : c === '£' ? 'pounds' : 'euros'}`)
+    .replace(/\b(\d+(?:\.\d+)?)\s?(K|M|B)\b(?![\w.])/g, (m, n, b) => `${n} ${BIG[b]}`)
+    .replace(/(\d)\s?°\s?F\b/g, '$1 degrees Fahrenheit').replace(/(\d)\s?°\s?C\b/g, '$1 degrees Celsius').replace(/(\d)\s?°/g, '$1 degrees')
+    .replace(/\bNo\.\s?(?=\d)/g, 'number ').replace(/(^|\s)#(\d)/g, '$1number $2')
+    .replace(/\bMt\.\s/g, 'Mount ').replace(/\bSt\.\s(?=[A-Z])/g, 'Saint ').replace(/\bSt\.(?=\s|$)/g, 'Street.')
+    .replace(/\b([ap])\.m\.(?=\W|$)/gi, (m, x) => x.toUpperCase() + ' M').replace(/(\d)\s?([ap])m\b/gi, (m, d, x) => `${d} ${x.toUpperCase()} M`)
+    .replace(/\bU\.S\.(?=\W|$)/g, 'U.S').replace(/\bU\.K\.(?=\W|$)/g, 'U.K')
+    .replace(/\b(Jan|Feb|Mar|Apr|Jun|Jul|Aug|Sept?|Oct|Nov|Dec)\.\s(?=\d)/g, (m, x) => MONTHS[x] + ' ')
+    .replace(/(^|[\s(])(\d\/\d{1,2})(?=[\s,.;:)!?]|$)/g, (m, p, f) => p + (FRACS[f] || f))
+    .replace(/\b(\d{1,4})\s?[–—-]\s?(\d{1,4})\b(?!-\d)/g, (m, a, b) => (a.length === 3 && b.length === 4) ? m : `${a} to ${b}`) // ranges, not phone numbers
+    .replace(/(\d)\s?(km|kg|cm|mm|mph|kph|lbs|lb|oz|ft|mi|hrs|hr|mins|min|sec|ml|GB|MB|TB|kWh)\b/g, (m, d, u) => `${d} ${UNITS[u]}`);
+}
 function speechText(t) { // say symbols the way a person would
-  return t.replace(/\b(Chapter|Part|Book|Act|Section|Volume)\s+([IVXLC]+)\b/g, (m, w, r) => `${w} ${romanToInt(r)}`)
+  return normalizeForSpeech(t).replace(/\b(Chapter|Part|Book|Act|Section|Volume)\s+([IVXLC]+)\b/g, (m, w, r) => `${w} ${romanToInt(r)}`)
     .replace(/&/g, ' and ').replace(/(\d)\s*%/g, '$1 percent').replace(/\be\.g\.,?/gi, 'for example,').replace(/\bi\.e\.,?/gi, 'that is,')
     .replace(/\betc\./gi, 'et cetera.').replace(/\bvs\.?(?=\s)/gi, 'versus').replace(/https?:\/\/\S+|www\.\S+/g, 'link')
     .replace(/[*_#~|<>^\\]+/g, ' ').replace(/\s{2,}/g, ' ').trim();
@@ -1483,7 +1539,7 @@ async function refreshDiag() {
     $('storage').textContent = `This site is using ${(est.usage / 1e6).toFixed(0)} MB of storage. Downloaded: ${prefs.get('dl', []).map(k => k.replace('piper|', 'Piper ')).join(', ') || 'none yet'}.`;
   } catch { $('storage').textContent = 'Storage info unavailable.'; }
 }
-function openAudio() { refreshDiag(); renderExports(); offlineInfo(); renderMyVoices(); if (!$('audioDlg').open) $('audioDlg').showModal(); }
+function openAudio() { $('pronBox').value = prefs.get('pron', ''); refreshDiag(); renderExports(); offlineInfo(); renderMyVoices(); if (!$('audioDlg').open) $('audioDlg').showModal(); }
 $('audioBtn').onclick = openAudio;
 function elKeyState() { $('elKey').placeholder = EL.key() ? 'Key saved (paste a new one to replace)' : 'ElevenLabs API key'; if (!EL.key()) $('elInfo').textContent = 'No key saved.'; }
 $('elSave').onclick = async () => {
@@ -1507,6 +1563,7 @@ $('clearModels').onclick = async () => {
   try { for (const k of await caches.keys()) if (/transformers/i.test(k)) await caches.delete(k); } catch {}
   NE.reset('cleared'); prefs.set('dl', []); refreshDiag(); fillVoices(); status('Downloaded voices deleted.');
 };
+$('pronBox').oninput = () => { prefs.set('pron', $('pronBox').value); pronRules = null; };
 $('gpu').onchange = () => { prefs.set('gpu', $('gpu').checked); pause(); NE.reset('restart'); NE.stats = { ms: 0, sec: 0, n: 0 }; bannerShown = false; refreshDiag(); status('Setting saved. Press Play.'); };
 
 // ---------- UI wiring ----------
