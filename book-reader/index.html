@@ -542,6 +542,8 @@ async function readPDF(buf) {
       if (isFurniture(p, l)) continue;
       const t = l.parts.filter(q => !(q.size < body * 0.75 && /^\s*[\d*†‡§]+\s*$/.test(q.s))).map(q => q.s).join('').replace(/\s+/g, ' ').trim(); if (!t) continue;
       if (l.size < body * 0.85 && l.y < p.H * 0.3 && /^(\d+|[*†‡])\s/.test(t)) continue; // footnote at the bottom of the page
+      if (/(\.\s?){4,}\s*\d+$|…{2,}\s*\d+$/.test(t)) continue;                       // table of contents leader line: "Chapter 1 ........ 12"
+      { const tk = t.split(' '), num = tk.filter(x => /^[\d$€£%.,()+\-–:/]+$/.test(x)).length; if (tk.length >= 3 && num / tk.length >= 0.6) { if (!text.endsWith('\u0001')) text += (open ? '\n\n' : '') + '\u0001'; open = false; continue; } } // table row of figures (marked, then dropped)
       const words = t.split(' ').length;
       if (l.size >= body * 1.3 && words <= 12 && !/[.,;]$/.test(t)) { text += (open ? '\n\n' : '') + '# ' + t + '\n\n'; open = false; lastY = l.y; continue; }
       const gap = lastY === null ? 0 : lastY - l.y;
@@ -550,6 +552,8 @@ async function readPDF(buf) {
       lastY = l.y; lastSize = l.size; lastLen = t.length;
     }
   }
+  // a short label line just above a table (its header row) goes with the table
+  text = text.replace(/(^|\n\n)([^\n.!?]{1,60})\n\n\u0001/g, (m, a, h) => h.split(' ').length <= 6 ? a + '\u0001' : m).replace(/\u0001(\n\n)?/g, '');
   return splitPlain(text, 'Document');
 }
 async function ocrPDF(pdf) {

@@ -319,6 +319,11 @@ add('Player', '40. Word-by-word highlight follows playback and only the current 
   await p.click('#play'); assert(r.split === 1, 'sentences split: ' + r.split);
   return 'word marker on: ' + r.text.slice(0, 30);
 });
+add('Narration', '41. PDF tables of figures, their header rows and dotted contents lines are not read aloud', async p => {
+  await open(p, 'table.pdf'); const t = await p.evaluate(() => document.getElementById('text').innerText);
+  assert(!/\$40,000|Year Income|\.{5}/.test(t), 'table/contents read: ' + t); assert(/numbers looked/.test(t) && /pattern is clear/.test(t), 'lost prose');
+  return 'prose only';
+});
 add('Offline', '30. Make available offline, then with the network blocked: app loads, opens Word/text, plays, exports MP3', async p => {
   await p.waitForFunction(() => navigator.serviceWorker.controller, null, { timeout: 15000 });
   await p.click('#audioBtn'); await p.uncheck('#offKokoro'); await p.click('#offGo');
