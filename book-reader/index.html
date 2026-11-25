@@ -277,6 +277,8 @@ const post = (m, t) => self.postMessage(m, t || []);
 function getKokoro(gpu) {
   if (kokoro) return Promise.resolve(kokoro);
   return kokoroP ||= (async () => {
+    // The voice engine uses only half the cores by default (min(4, cores/2)); let it use all of them (up to 4) so it keeps ahead of playback.
+    try { const hc = navigator.hardwareConcurrency || 1; if (self.crossOriginIsolated && hc > 1) Object.defineProperty(navigator, 'hardwareConcurrency', { get: () => hc * 2, configurable: true }); } catch {}
     const { KokoroTTS } = await import(KOKORO_URL);
     const progress = p => { if (p.status === 'progress' && /\.onnx$/.test(p.file || '')) post({ type: 'progress', engine: 'kokoro', loaded: p.loaded, total: p.total }); };
     if (gpu) {
@@ -829,8 +831,9 @@ const speakable = t => /[\p{L}\p{N}]/u.test(t);
 function resample(x, from, to) { if (from === to) return x; const n = Math.round(x.length * to / from), o = new Float32Array(n), r = from / to; for (let i = 0; i < n; i++) { const t = i * r, k = Math.floor(t), f = t - k; o[i] = (x[k] || 0) * (1 - f) + (x[k + 1] || 0) * f; } return o; }
 const sentParts = (c, s) => [{ t: flat[c][s], who: '' }];
 const singleVoiceKey = (c, s, e, v) => v;
+const NARR_SPEED = 1.05; // words at ~180 wpm; with natural pauses the overall pace lands at ~150-160 wpm like professional narrators
 async function genChunk(e, v, c, s, j, pri, cache, owner) {
-  const r = await NE.gen(e, v, chunkText(c, s, j), pri, cache, owner, ctxFor(c, s, j), 1);
+  const r = await NE.gen(e, v, chunkText(c, s, j), pri, cache, owner, ctxFor(c, s, j), e === 'kokoro' ? NARR_SPEED : 1);
   return { pcm: r.pcm, sr: r.sr, gain: 0 };
 }
 
@@ -850,16 +853,16 @@ function styleGapBase(c, s) {
   if (!storyMode()) return para ? 0.35 : 0;
   if (!nxt) return 1.1;                                                          // end of chapter
   let g;
-  if (para) g = /^["“'‘«]/.test(nxt) || /["”'’»]$/.test(t) ? 0.7 : 0.65;          // paragraph / dialogue turn
-  else if (endsWith(t, /(\.\.\.|…|—|–|-)$/)) g = 0.5;                            // trailing off: hold a beat
+  if (para) g = /^["“'‘«]/.test(nxt) || /["”'’»]$/.test(t) ? 0.6 : 0.55;          // paragraph / dialogue turn
+  else if (endsWith(t, /(\.\.\.|…|—|–|-)$/)) g = 0.45;                           // trailing off: hold a beat
   else if (endsWith(t, /\?$/)) g = 0.4;                                          // let a question land
   else if (endsWith(t, /[.!]$/)) g = wordsIn(t) <= 5 && wordsIn(nxt) <= 6 ? 0.18 : 0.3; // staccato runs stay tight
   else if (endsWith(t, /:$/)) g = 0.35;                                          // colon: set up what follows
   else if (endsWith(t, /;$/)) g = 0.28;                                          // semicolon: half a full stop
   else g = 0.12;                                                                 // long sentence split mid-way: breath
   const nxtEndsPara = pend[c].has(s + 1), alone = para && (s === 0 || pend[c].has(s - 1));
-  if (alone && wordsIn(t) <= 8 && !/^["“'‘«]/.test(t)) g += 0.25;              // a one-line paragraph is a key line: let it land
-  if (wordsIn(nxt) <= 6 && nxtEndsPara && wordsIn(t) >= 8 && !/^["“'‘]/.test(nxt)) g += 0.3; // comic/dramatic beat before a short closing line
+  if (alone && wordsIn(t) <= 8 && !/^["“'‘«]/.test(t)) g += 0.15;              // a one-line paragraph is a key line: let it land
+  if (wordsIn(nxt) <= 6 && nxtEndsPara && wordsIn(t) >= 8 && !/^["“'‘]/.test(nxt)) g += 0.2; // comic/dramatic beat before a short closing line
   return g;
 }
 function styleRate(t) {   // gentle pace shaping inside the user's chosen speed
@@ -1042,13 +1045,16 @@ function stopAudio() { ignorePauseUntil = performance.now() + 800; try { audio.p
 function setPlayBtn() { $('play').textContent = playing ? '⏸' : '▶'; if ('mediaSession' in navigator) try { navigator.mediaSession.playbackState = playing ? 'playing' : 'paused'; } catch {} }
 const nextPos = (c, s) => s + 1 < flat[c].length ? [c, s + 1] : c + 1 < flat.length ? [c + 1, 0] : null;
 
+// Phrase groups that are already generated, so playback can join them into one continuous clip (no gap between clips).
+const READY = new Map(), readyKey2 = (e, v, c, s, j) => `${e}|${v}|${c}|${s}|${j}`;
 function prefetch(c, j) { // generate the next phrase groups while this one plays
   const e = engineName(), v = $('voice').value; let pos = nextPos(c, j), secs = 0;
-  for (let k = 0, ahead = e === 'eleven' ? 1 : 5; k < ahead && pos; k++) { // ElevenLabs: small lookahead so skipping wastes few credits
+  for (let k = 0, ahead = e === 'eleven' ? 1 : 8; k < ahead && pos; k++) { // ElevenLabs: small lookahead so skipping wastes few credits
     while (pos && !speakable(flat[pos[0]][pos[1]])) pos = nextPos(...pos); if (!pos) break;
     const [pc, ps] = pos, pj = chunkEnd(pc, ps, e), t = chunkText(pc, ps, pj);
-    genChunk(e, v, pc, ps, pj, 1, true, 'play').catch(() => {}); secs += t.length / 15;
-    if (secs > 45) break; pos = nextPos(pc, pj);
+    const rk = readyKey2(e, v, pc, ps, pj);
+    if (!READY.has(rk)) genChunk(e, v, pc, ps, pj, 1, true, 'play').then(r => { READY.set(rk, r); while (READY.size > 40) READY.delete(READY.keys().next().value); }).catch(() => {});
+    secs += t.length / 15; if (secs > 120) break; pos = nextPos(pc, pj);
   }
 }
 async function speakCurrent() {
@@ -1098,11 +1104,20 @@ async function speakNeural(my) {
   clearTimeout(waitT); if (my !== token || !playing) return;
   failures = 0; if (/Generating|Loading|Downloading/.test($('status').textContent)) status('');
   maybeSlowBanner();
-  const story = storyMode(), out = assemble(res, c, s0, j, story, story ? styleGap(c, j) : (pend[c].has(j) ? 0.35 : 0)), pcm = out.pcm;
+  const story = storyMode(), gapFor = q => story ? styleGap(c, q) : (pend[c].has(q) ? 0.35 : 0), out = assemble(res, c, s0, j, story, gapFor(j));
+  // Join phrase groups that are already generated into one continuous clip: switching clips is what makes phones hiccup.
+  let pcm = out.pcm, starts = out.starts.slice(), jj = j;
+  for (let n = 0; n < 16 && pcm.length / res.sr < 150; n++) {
+    const np = nextPos(c, jj); if (!np || np[0] !== c || !speakable(flat[c][np[1]])) break;
+    const ns = np[1], nj = chunkEnd(c, ns, e), rk = readyKey2(e, v, c, ns, nj), r2 = READY.get(rk); if (!r2 || r2.sr !== res.sr) break;
+    const o2 = assemble(r2, c, ns, nj, story, gapFor(nj)), off = pcm.length / res.sr; READY.delete(rk);
+    starts.push(...o2.starts.map(t => t + off)); pcm = concat([pcm, o2.pcm]); jj = nj;
+  }
+  if (jj !== j) prefetch(c, jj);
   const blob = new Blob([wavHeader(pcm.length, res.sr), floatToInt16(pcm)], { type: 'audio/wav' });
   if (audioURL) URL.revokeObjectURL(audioURL); audioURL = URL.createObjectURL(blob);
   ignorePauseUntil = performance.now() + 800;
-  audio.src = audioURL; audio.playbackRate = +$('rate').value; audio.preservesPitch = true; audioFor = { ch: c, s0, j, starts: out.starts, my };
+  audio.src = audioURL; audio.playbackRate = +$('rate').value; audio.preservesPitch = true; audioFor = { ch: c, s0, j: jj, starts, my };
   try { await audio.play(); } catch (err) { if (my === token) { pause('Tap Play to start audio (your browser blocked autoplay).'); } }
 }
 function concat(parts) { const n = parts.reduce((a, p) => a + p.length, 0), o = new Float32Array(n); let k = 0; for (const p of parts) { o.set(p, k); k += p.length; } return o; }
