@@ -236,13 +236,34 @@ const _fetch = self.fetch.bind(self);
 const isMix = id => /^[ab]x_mix__/.test(id);
 const USER_VOICES = new Map(); // personal voices: provided by the page from this device's own storage, never downloaded
 const isUser = id => /^[ab]u_/.test(id);
+// Steady voices: Kokoro picks a different style vector for every input length, so a short line can sound like a
+// different reader from the long sentence before it. "<lang>s_v1__<voice>" anchors the voice's identity to its
+// long-passage average (as a cloned voice averages identity over a whole recording) and pulls short-line prosody
+// toward it, so the narrator stays the same person from sentence to sentence.
+const isSteady = id => /^[ab]s_v\d+__/.test(id);
+function steady(d) {
+  const D = 256, R = d.length / D, anc = new Float32Array(D), a0 = Math.min(120, R - 1), a1 = Math.min(320, R);
+  for (let r = a0; r < a1; r++) for (let j = 0; j < D; j++) anc[j] += d[r * D + j] / (a1 - a0);
+  const out = new Float32Array(d.length);
+  for (let r = 0; r < R; r++) {
+    const short = Math.min(1, Math.max(0, (140 - r) / 120)), wt = 0.85, wp = 0.2 + 0.7 * short; // timbre (first half) / prosody (second half)
+    for (let j = 0; j < D; j++) { const w = j < 128 ? wt : wp; out[r * D + j] = (1 - w) * d[r * D + j] + w * anc[j]; }
+  }
+  return out;
+}
 const voiceCache = new Map();
 function voiceData(id) {
   if (voiceCache.has(id)) return voiceCache.get(id);
   const p = (async () => {
+    if (isSteady(id)) return steady(await voiceData(id.slice(id.indexOf('__') + 2)));
     if (isUser(id)) { const d = USER_VOICES.get(id); if (!d) throw new Error('Personal voice not loaded'); return d; }
     let mix = BLENDS[id] ? Object.entries(BLENDS[id].mix) : isMix(id) ? id.split('__').slice(1).map(t => { const i = t.lastIndexOf('-'); return [t.slice(0, i), +t.slice(i + 1) / 100]; }) : null;
-    if (!mix) return new Float32Array(await (await _fetch(VOICE_BASE + id + '.bin')).arrayBuffer());
+    if (!mix) { // a built-in voice: reuse the copy Kokoro already keeps on this device (works offline), else download it
+      const url = VOICE_BASE + id + '.bin'; let res = null;
+      try { res = await (await caches.open('kokoro-voices')).match(url); } catch {}
+      if (!res) { res = await _fetch(url); if (!res.ok) throw new Error('Voice download failed: ' + id); }
+      return new Float32Array(await res.arrayBuffer());
+    }
     const parts = await Promise.all(mix.map(async ([v, w]) => [await voiceData(v), w]));
     const out = new Float32Array(parts[0][0].length); for (const [a, w] of parts) for (let i = 0; i < out.length; i++) out[i] += a[i] * w;
     return out;
@@ -251,11 +272,11 @@ function voiceData(id) {
 }
 self.fetch = async (input, init) => {
   const u = String((input && input.url) || input), id = u.startsWith(VOICE_BASE) ? u.slice(VOICE_BASE.length).replace(/\.bin$/, '') : '';
-  if (!BLENDS[id] && !isMix(id) && !isUser(id)) return _fetch(input, init);
+  if (!BLENDS[id] && !isMix(id) && !isUser(id) && !isSteady(id)) return _fetch(input, init);
   const out = await voiceData(id);
   return new Response(out.slice().buffer, { status: 200, headers: { 'Content-Type': 'application/octet-stream' } });
 };
-function allowBlends(k) { const orig = k._validate_voice.bind(k); k._validate_voice = v => BLENDS[v] || isMix(v) || isUser(v) ? v[0] : orig(v); return k; }
+function allowBlends(k) { const orig = k._validate_voice.bind(k); k._validate_voice = v => BLENDS[v] || isMix(v) || isUser(v) || isSteady(v) ? v[0] : orig(v); return k; }
 let kokoro = null, kokoroP = null, kokoroDevice = '', piperMod = null;
 const queue = []; let running = false, seq = 0;
 const post = (m, t) => self.postMessage(m, t || []);
@@ -688,6 +709,7 @@ const NE = {
     return this.gen0(engine, voice, text, pri, cache, owner, ctx, speed);
   },
   gen0(engine, voice, text, pri, cache, owner, ctx, speed) { // speed 1: Kokoro's natural pace sits within the range of popular audiobook narrators
+    if (engine === 'kokoro' && prefs.get('steady', true) && !/^[ab]s_v\d+__/.test(voice)) voice = voice[0] + 's_v2__' + voice; // same narrator at every sentence length
     const k = engine + '|' + voice + '|' + speed + '|' + text;
     if (cache && this.cache.has(k)) return this.cache.get(k);
     const p = engine === 'eleven' ? EL.gen(voice, text, owner, ctx) : this.call({ type: 'gen', engine, voice, text, pri, owner, speed, gpu: useGPU() }).then(m => {
@@ -1084,9 +1106,9 @@ function findCuts(pcm, sr, w) {
   }
   return cuts;
 }
-function shapeSentence(x, seed) { // speech intensity declines across a phrase (~3 dB); narrators also vary level a little per sentence
-  const n = x.length, jit = (hash01(String(seed)) - 0.5) * 1.6;
-  for (let i = 0; i < n; i++) x[i] *= 10 ** ((1.4 - 3.0 * i / n + jit) / 20);
+function shapeSentence(x, seed) { // a slight lift at the start of each sentence that settles across it (~1 dB). Kept small and
+  const n = x.length;              // the same every time: bigger or random level changes from sentence to sentence sound jumpy.
+  for (let i = 0; i < n; i++) x[i] *= 10 ** ((0.5 - 1.0 * i / n) / 20);
   return x;
 }
 function fade(x, sr) { const x2 = new Float32Array(x), n = Math.min(Math.round(sr * 0.012), x2.length >> 1); for (let i = 0; i < n; i++) { const g = i / n; x2[i] *= g; x2[x2.length - 1 - i] *= g; } return x2; }
