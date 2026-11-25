@@ -683,7 +683,7 @@ function renderChapter() {
 }
 let spans = [], hlCh = -1, hlSi = -1, prefix = [], chLen = [], tailLen = [];
 let followOff = false, autoScrolling = 0; // the page follows the narrator until you scroll yourself; then a pill brings you back
-function userScrolled() { if (!playing || followOff) return; // wheel and touch only ever come from a person, never from auto-scroll followOff = true; $('backPill').classList.remove('hide'); }
+function userScrolled() { if (!playing || followOff) return; /* wheel and touch only ever come from a person, never from auto-scroll */ followOff = true; $('backPill').classList.remove('hide'); }
 function highlight(scroll) {
   const from = hlCh === ch ? Math.min(hlSi, si) : 0, to = hlCh === ch ? Math.max(hlSi, si) : spans.length - 1;
   for (let i = Math.max(0, from); i <= to && i < spans.length; i++) { spans[i].classList.toggle('cur', i === si); spans[i].classList.toggle('done', i < si); }
