@@ -98,6 +98,7 @@ dialog p{margin:6px 0;font-size:14px;color:var(--muted)}
 <main>
   <aside id="side">
     <h2>Chapters</h2><ul class="list" id="toc"></ul>
+    <h2 id="bmH" class="hide">Bookmarks</h2><ul class="list" id="bms"></ul>
     <h2>Library</h2><ul class="list" id="lib"></ul>
   </aside>
   <section id="reader">
@@ -116,6 +117,7 @@ dialog p{margin:6px 0;font-size:14px;color:var(--muted)}
     <button class="btn ctrl big primary" id="play" title="Play/Pause (Space)">▶</button>
     <button class="btn ctrl" id="fwd" title="Next sentence (→)">↻</button>
     <button class="btn ctrl" id="nextCh" title="Next chapter (Shift+→)">⏭</button>
+    <button class="btn ctrl" id="bmBtn" title="Bookmark this sentence (B)">🔖</button>
     <button class="btn ctrl" id="setBtn" title="Voice &amp; settings" aria-expanded="false" aria-controls="settings">⚙</button>
   </div>
   <div class="row" id="settings" style="margin-top:8px">
@@ -643,7 +645,7 @@ async function loadBook(b, persist = true) {
   const pos = prefs.get('pos.' + b.id, null) || { ch: b.ch || 0, si: b.si || 0 }; b.ch = pos.ch; b.si = pos.si;
   ch = Math.min(b.ch || 0, flat.length - 1); si = Math.min(b.si || 0, flat[ch].length - 1);
   $('title').textContent = b.name; document.title = b.name + ' | Audiobook Reader';
-  $('drop').classList.add('hide'); if (persist) await db.put(b); renderTOC(); renderChapter(); renderLib();
+  $('drop').classList.add('hide'); if (persist) await db.put(b); renderTOC(); renderChapter(); renderLib(); renderBookmarks();
 }
 
 // ---------- rendering ----------
@@ -655,6 +657,23 @@ function renderTOC() {
     li.onclick = () => jump(i, 0); if (i === ch) li.classList.add('active');
     $('toc').appendChild(li);
   });
+}
+// ---------- bookmarks ----------
+const bmKey = () => 'bm.' + (book && book.id);
+function renderBookmarks() {
+  const list = book ? prefs.get(bmKey(), []) : []; $('bms').innerHTML = ''; $('bmH').classList.toggle('hide', !list.length);
+  list.forEach((b, i) => {
+    const li = document.createElement('li'); li.innerHTML = '<span class="t"></span><button class="x" title="Remove">✕</button>';
+    li.querySelector('.t').textContent = '🔖 ' + b.text; li.title = (book.chapters[b.ch] || {}).title || '';
+    li.onclick = e => { if (e.target.classList.contains('x')) return; jump(b.ch, b.si, playing); };
+    li.querySelector('.x').onclick = () => { const l = prefs.get(bmKey(), []); l.splice(i, 1); prefs.set(bmKey(), l); renderBookmarks(); };
+    $('bms').appendChild(li);
+  });
+}
+function addBookmark() {
+  if (!book) return; const l = prefs.get(bmKey(), []);
+  if (!l.some(b => b.ch === ch && b.si === si)) { l.push({ ch, si, text: flat[ch][si].slice(0, 70), t: Date.now() }); l.sort((a, b) => a.ch - b.ch || a.si - b.si); prefs.set(bmKey(), l); }
+  renderBookmarks(); status('Bookmarked: "' + flat[ch][si].slice(0, 50) + '…" (see the ☰ menu)');
 }
 async function renderLib() {
   const all = (await db.all() || []).map(b => { const p = prefs.get('pos.' + b.id, null); if (p) { b.ch = p.ch; b.si = p.si; b.updated = Math.max(b.updated || 0, p.t || 0); } return b; }).sort((a, b) => b.updated - a.updated);
@@ -1573,6 +1592,7 @@ $('clearModels').onclick = async () => {
 };
 ['wheel', 'touchmove'].forEach(ev => addEventListener(ev, userScrolled, { passive: true }));
 $('backPill').onclick = () => { followOff = false; $('backPill').classList.add('hide'); hlSi = -1; highlight(true); };
+$('bmBtn').onclick = addBookmark;
 $('pronBox').oninput = () => { prefs.set('pron', $('pronBox').value); pronRules = null; };
 $('gpu').onchange = () => { prefs.set('gpu', $('gpu').checked); pause(); NE.reset('restart'); NE.stats = { ms: 0, sec: 0, n: 0 }; bannerShown = false; refreshDiag(); status('Setting saved. Press Play.'); };
 
@@ -1625,6 +1645,7 @@ document.addEventListener('keydown', e => {
   if (/INPUT|SELECT|TEXTAREA/.test(e.target.tagName) && e.target.type !== 'range') return;
   if ($('audioDlg').open || $('shareDlg').open) return;
   if (e.code === 'Space') { e.preventDefault(); playing ? pause() : play(); }
+  else if (e.key === 'b' || e.key === 'B') { e.preventDefault(); addBookmark(); }
   else if (e.key === 'ArrowLeft') { e.preventDefault(); e.shiftKey ? jump(ch - 1, 0) : step(-1); }
   else if (e.key === 'ArrowRight') { e.preventDefault(); e.shiftKey ? jump(ch + 1, 0) : step(1); }
 });

@@ -296,6 +296,17 @@ add('Player', '37. Auto-scroll follows the narrator, yields when you scroll, and
   assert(inView, 'current sentence not on screen after Back'); await p.click('#play');
   return 'yields + returns';
 });
+add('Player', '38. Bookmarks: save the current sentence, listed in the menu, tap jumps there, remove works, kept after reload', async p => {
+  await open(p, 'big.txt'); await p.evaluate(() => [...document.querySelectorAll('#text .s')][7].click()); await p.waitForTimeout(200);
+  if (await p.evaluate(() => __abr.state.playing)) await p.click('#play');
+  await p.click('#bmBtn'); assert(await p.isVisible('#bms li'), 'bookmark not listed');
+  await p.reload(); await p.waitForFunction(() => window.__abr && document.querySelectorAll('#lib li .t').length, null, { timeout: 15000 }); await p.click('#lib li');
+  await p.waitForFunction(() => document.querySelectorAll('#bms li').length === 1, null, { timeout: 15000 });
+  await p.evaluate(() => [...document.querySelectorAll('#text .s')][0].click()); await p.waitForTimeout(200); if (await p.evaluate(() => __abr.state.playing)) await p.click('#play');
+  await p.click('#bms li .t'); await p.waitForTimeout(200); const s = await st(p); assert(s.si === 7, 'jumped to ' + s.si);
+  if (s.playing) await p.click('#play'); await p.click('#bms li .x'); assert(!(await p.isVisible('#bms li')), 'not removed');
+  return 'save, list, persist, jump, remove';
+});
 add('Offline', '30. Make available offline, then with the network blocked: app loads, opens Word/text, plays, exports MP3', async p => {
   await p.waitForFunction(() => navigator.serviceWorker.controller, null, { timeout: 15000 });
   await p.click('#audioBtn'); await p.uncheck('#offKokoro'); await p.click('#offGo');
