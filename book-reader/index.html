@@ -106,6 +106,7 @@ dialog p{margin:6px 0;font-size:14px;color:var(--muted)}
     <div id="text"></div>
   </section>
 </main>
+<button class="btn primary hide" id="backPill" style="position:fixed;left:50%;transform:translateX(-50%);bottom:calc(var(--ph,170px) + 12px);z-index:7;border-radius:999px;box-shadow:0 4px 14px rgba(0,0,0,.2)">↓ Back to where he is reading</button>
 <div class="player">
   <div id="banner" class="hide"></div>
   <div class="prog"><span id="pos">0 / 0</span><input type="range" id="seek" min="0" max="0" value="0" aria-label="Position in chapter"><span id="eta">--</span></div>
@@ -681,10 +682,12 @@ function renderChapter() {
   $('seek').max = Math.max(0, flat[ch].length - 1); highlight(true);
 }
 let spans = [], hlCh = -1, hlSi = -1, prefix = [], chLen = [], tailLen = [];
+let followOff = false, autoScrolling = 0; // the page follows the narrator until you scroll yourself; then a pill brings you back
+function userScrolled() { if (!playing || followOff) return; // wheel and touch only ever come from a person, never from auto-scroll followOff = true; $('backPill').classList.remove('hide'); }
 function highlight(scroll) {
   const from = hlCh === ch ? Math.min(hlSi, si) : 0, to = hlCh === ch ? Math.max(hlSi, si) : spans.length - 1;
   for (let i = Math.max(0, from); i <= to && i < spans.length; i++) { spans[i].classList.toggle('cur', i === si); spans[i].classList.toggle('done', i < si); }
-  const cur = spans[si]; if (cur && scroll && (hlSi !== si || hlCh !== ch)) cur.scrollIntoView({ block: 'center', behavior: 'smooth' }); hlCh = ch; hlSi = si;
+  const cur = spans[si]; if (cur && scroll && !followOff && (hlSi !== si || hlCh !== ch)) { autoScrolling = performance.now(); cur.scrollIntoView({ block: 'center', behavior: 'smooth' }); } hlCh = ch; hlSi = si;
   $('seek').value = si; $('pos').textContent = `Ch ${ch + 1}/${flat.length} · ${si + 1}/${flat[ch].length}`;
   const rem = ((tailLen[ch] || 0) + (prefix[flat[ch].length] || 0) - (prefix[Math.min(si, flat[ch].length)] || 0)) / (15 * +$('rate').value);
   $('eta').textContent = rem > 3600 ? `${(rem / 3600).toFixed(1)}h left` : `${Math.ceil(rem / 60)}m left`;
@@ -1168,12 +1171,12 @@ const nextPos = (c, s) => s + 1 < flat[c].length ? [c, s + 1] : c + 1 < flat.len
 const READY = new Map(), readyKey2 = (e, v, c, s, j) => `${e}|${v}|${c}|${s}|${j}`;
 function prefetch(c, j) { // generate the next phrase groups while this one plays
   const e = engineName(), v = $('voice').value; let pos = nextPos(c, j), secs = 0;
-  for (let k = 0, ahead = e === 'eleven' ? 1 : 8; k < ahead && pos; k++) { // ElevenLabs: small lookahead so skipping wastes few credits
+  for (let k = 0, ahead = e === 'eleven' ? 1 : document.hidden ? 60 : 8; k < ahead && pos; k++) { // ElevenLabs: small lookahead so skipping wastes few credits
     while (pos && !speakable(flat[pos[0]][pos[1]])) pos = nextPos(...pos); if (!pos) break;
     const [pc, ps] = pos, pj = chunkEnd(pc, ps, e), t = chunkText(pc, ps, pj);
     const rk = readyKey2(e, v, pc, ps, pj);
     if (!READY.has(rk)) genChunk(e, v, pc, ps, pj, 1, true, 'play').then(r => { READY.set(rk, r); while (READY.size > 40) READY.delete(READY.keys().next().value); }).catch(() => {});
-    secs += t.length / 15; if (secs > 120) break; pos = nextPos(pc, pj);
+    secs += t.length / 15; if (secs > (document.hidden ? 900 : 120)) break; pos = nextPos(pc, pj);
   }
 }
 async function speakCurrent() {
@@ -1237,7 +1240,7 @@ async function speakNeural(my) {
   const story = storyMode(), gapFor = q => story ? styleGap(c, q) : (pend[c].has(q) ? 0.35 : 0), out = assemble(res, c, s0, j, story, gapFor(j));
   // Join phrase groups that are already generated into one continuous clip: switching clips is what makes phones hiccup.
   let pcm = out.pcm, starts = out.starts.slice(), jj = j;
-  for (let n = 0; n < 16 && pcm.length / res.sr < 150; n++) {
+  for (let n = 0; n < (document.hidden ? 80 : 16) && pcm.length / res.sr < (document.hidden ? 900 : 150); n++) { // screen locked: one long clip keeps playing without the app
     const np = nextPos(c, jj); if (!np || np[0] !== c || !speakable(flat[c][np[1]])) break;
     const ns = np[1], nj = chunkEnd(c, ns, e), rk = readyKey2(e, v, c, ns, nj), r2 = READY.get(rk); if (!r2 || r2.sr !== res.sr) break;
     const o2 = assemble(r2, c, ns, nj, story, gapFor(nj)), off = pcm.length / res.sr; READY.delete(rk);
@@ -1253,7 +1256,12 @@ async function speakNeural(my) {
 function concat(parts) { const n = parts.reduce((a, p) => a + p.length, 0), o = new Float32Array(n); let k = 0; for (const p of parts) { o.set(p, k); k += p.length; } return o; }
 let lastEnded = -1e9, quickNext = false;
 audio.addEventListener('ended', () => { lastEnded = performance.now(); if (!audioFor || audioFor.my !== token || !playing) return; si = audioFor.j + 1; speakCurrent(); });
+document.addEventListener('visibilitychange', () => { if (document.hidden && playing && isNeural() && audioFor) prefetch(audioFor.ch, audioFor.j); }); // screen locked: prepare much further ahead
+let posStateAt = 0;
 audio.addEventListener('timeupdate', () => { // move the highlight sentence by sentence inside a phrase group
+  if ('mediaSession' in navigator && navigator.mediaSession.setPositionState && performance.now() - posStateAt > 1000 && isFinite(audio.duration) && audio.duration > 0) {
+    posStateAt = performance.now(); try { navigator.mediaSession.setPositionState({ duration: audio.duration, position: Math.min(audio.currentTime, audio.duration), playbackRate: audio.playbackRate || 1 }); } catch {}
+  }
   const a = audioFor; if (!a || a.my !== token || !a.starts || ch !== a.ch) return;
   let k = 0; while (k + 1 < a.starts.length && a.starts[k + 1] <= audio.currentTime + 0.05) k++;
   if (a.s0 + k !== si) { si = a.s0 + k; highlight(true); save(); }
@@ -1302,7 +1310,7 @@ function jump(c, s, resume = playing) {
   const changed = c !== ch; ch = Math.max(0, Math.min(c, flat.length - 1)); si = Math.max(0, Math.min(s, flat[ch].length - 1));
   if (changed) renderChapter(); else highlight(true); save();
   if (isNeural()) { if (engineName() === 'kokoro' && NE.busyWithPlayback()) NE.reset('skip'); else NE.clear(); } // restarting (~1 s) beats waiting for unwanted audio
-  quickNext = true;
+  quickNext = true; followOff = false; $('backPill').classList.add('hide');
   if (resume) { playing = true; setPlayBtn(); speakCurrent(); }
 }
 function step(d) {
@@ -1563,6 +1571,8 @@ $('clearModels').onclick = async () => {
   try { for (const k of await caches.keys()) if (/transformers/i.test(k)) await caches.delete(k); } catch {}
   NE.reset('cleared'); prefs.set('dl', []); refreshDiag(); fillVoices(); status('Downloaded voices deleted.');
 };
+['wheel', 'touchmove'].forEach(ev => addEventListener(ev, userScrolled, { passive: true }));
+$('backPill').onclick = () => { followOff = false; $('backPill').classList.add('hide'); hlSi = -1; highlight(true); };
 $('pronBox').oninput = () => { prefs.set('pron', $('pronBox').value); pronRules = null; };
 $('gpu').onchange = () => { prefs.set('gpu', $('gpu').checked); pause(); NE.reset('restart'); NE.stats = { ms: 0, sec: 0, n: 0 }; bannerShown = false; refreshDiag(); status('Setting saved. Press Play.'); };
 

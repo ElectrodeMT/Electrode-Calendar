@@ -285,6 +285,17 @@ add('Narration', '36. Numbers, money, units and symbols are said the way a narra
   const s = await p.evaluate(() => __abr.speechText('Ibid. Gizaw wrote it.')); assert(s === 'Gee-zow wrote it.', s);
   return `${Object.keys(cases).length} cases + dictionary`;
 });
+add('Player', '37. Auto-scroll follows the narrator, yields when you scroll, and "Back to where he is reading" returns', async p => {
+  await open(p, 'big.txt'); await testEngine(p, 'slow'); await p.click('#play'); await p.waitForFunction(() => __abr.state.si >= 2, null, { timeout: 15000 });
+  await p.mouse.move(400, 300); await p.mouse.wheel(0, 3000); await p.waitForTimeout(300);
+  assert(await p.isVisible('#backPill'), 'pill not shown after manual scroll'); const y1 = await p.evaluate(() => scrollY);
+  await p.waitForFunction(() => __abr.state.si >= 5, null, { timeout: 15000 }); const y2 = await p.evaluate(() => scrollY);
+  assert(Math.abs(y2 - y1) < 5, `page was yanked back while reading (${y1} -> ${y2})`);
+  await p.click('#backPill'); await p.waitForTimeout(800); assert(!(await p.isVisible('#backPill')), 'pill still visible');
+  const inView = await p.evaluate(() => { const r = document.querySelector('#text .s.cur').getBoundingClientRect(); return r.top >= 0 && r.bottom <= innerHeight; });
+  assert(inView, 'current sentence not on screen after Back'); await p.click('#play');
+  return 'yields + returns';
+});
 add('Offline', '30. Make available offline, then with the network blocked: app loads, opens Word/text, plays, exports MP3', async p => {
   await p.waitForFunction(() => navigator.serviceWorker.controller, null, { timeout: 15000 });
   await p.click('#audioBtn'); await p.uncheck('#offKokoro'); await p.click('#offGo');
