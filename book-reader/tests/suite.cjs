@@ -312,6 +312,13 @@ add('Narration', '39. EPUB/HTML footnote markers and footnote text are skipped; 
   assert(!/tool\s?1|mind\s?2|must not be read|Smith, 2019/.test(t), 'footnote read: ' + t); assert(/normal link kept/.test(t), 'lost normal text');
   return 'clean';
 });
+add('Player', '40. Word-by-word highlight follows playback and only the current sentence is split into words', async p => {
+  await open(p, 'book.txt'); await testEngine(p, 'long'); await p.click('#play');
+  await p.waitForFunction(() => document.querySelector('#text .s.cur .w.wcur'), null, { timeout: 15000 });
+  const r = await p.evaluate(() => ({ split: [...document.querySelectorAll('#text .s')].filter(s => s.querySelector('.w')).length, text: document.querySelector('#text .s.cur').textContent }));
+  await p.click('#play'); assert(r.split === 1, 'sentences split: ' + r.split);
+  return 'word marker on: ' + r.text.slice(0, 30);
+});
 add('Offline', '30. Make available offline, then with the network blocked: app loads, opens Word/text, plays, exports MP3', async p => {
   await p.waitForFunction(() => navigator.serviceWorker.controller, null, { timeout: 15000 });
   await p.click('#audioBtn'); await p.uncheck('#offKokoro'); await p.click('#offGo');

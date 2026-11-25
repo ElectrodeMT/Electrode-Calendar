@@ -50,6 +50,7 @@ aside h2{font-size:12px;text-transform:uppercase;letter-spacing:.06em;color:var(
 .s{cursor:pointer;border-radius:4px;transition:background .15s}
 .s:hover{text-decoration:underline dotted}
 .s.cur{background:var(--hl)}
+.w.wcur{text-decoration:underline 2px var(--accent);text-underline-offset:4px;text-decoration-skip-ink:none}
 .s.done{color:var(--read)}
 #drop{border:2px dashed var(--line);border-radius:16px;padding:48px 20px;text-align:center;color:var(--muted);margin-top:24px}
 #drop.over{border-color:var(--accent);color:var(--ink)}
@@ -700,7 +701,7 @@ function renderChapter() {
     for (const s of p) { const sp = document.createElement('span'); sp.className = 's'; sp.dataset.i = k++; sp.textContent = s + ' '; pe.appendChild(sp); }
     frag.appendChild(pe);
   }
-  box.appendChild(frag); spans = [...box.querySelectorAll('.s')]; hlCh = -1;
+  box.appendChild(frag); spans = [...box.querySelectorAll('.s')]; hlCh = -1; wordSpan = null; wordIdx = -1;
   prefix = [0]; for (const t of flat[ch]) prefix.push(prefix[prefix.length - 1] + t.length + 1);
   [...$('toc').children].forEach((li, i) => li.classList.toggle('active', i === ch));
   $('seek').max = Math.max(0, flat[ch].length - 1); highlight(true);
@@ -709,6 +710,7 @@ let spans = [], hlCh = -1, hlSi = -1, prefix = [], chLen = [], tailLen = [];
 let followOff = false, autoScrolling = 0; // the page follows the narrator until you scroll yourself; then a pill brings you back
 function userScrolled() { if (!playing || followOff) return; /* wheel and touch only ever come from a person, never from auto-scroll */ followOff = true; $('backPill').classList.remove('hide'); }
 function highlight(scroll) {
+  if (wordSpan && wordSpan !== spans[si]) unsplitWords();
   const from = hlCh === ch ? Math.min(hlSi, si) : 0, to = hlCh === ch ? Math.max(hlSi, si) : spans.length - 1;
   for (let i = Math.max(0, from); i <= to && i < spans.length; i++) { spans[i].classList.toggle('cur', i === si); spans[i].classList.toggle('done', i < si); }
   const cur = spans[si]; if (cur && scroll && !followOff && (hlSi !== si || hlCh !== ch)) { autoScrolling = performance.now(); cur.scrollIntoView({ block: 'center', behavior: 'smooth' }); } hlCh = ch; hlSi = si;
@@ -1290,6 +1292,27 @@ audio.addEventListener('timeupdate', () => { // move the highlight sentence by s
   let k = 0; while (k + 1 < a.starts.length && a.starts[k + 1] <= audio.currentTime + 0.05) k++;
   if (a.s0 + k !== si) { si = a.s0 + k; highlight(true); save(); }
 });
+// Word-by-word highlight (approximate): the spoken word is estimated from its position in the sentence's audio,
+// weighted by letters and by the small pauses after commas. Only the sentence being read is split into words.
+var wordSpan = null, wordIdx = -1; // var: highlight() may run before this line during start-up
+function unsplitWords() { if (wordSpan) { wordSpan.textContent = wordSpan._t; wordSpan = null; wordIdx = -1; } }
+function splitWords(sp) {
+  if (wordSpan === sp) return; unsplitWords(); sp._t = sp.textContent; sp.innerHTML = '';
+  const parts = sp._t.split(/(\s+)/); let acc = 0; sp._w = [];
+  for (const p of parts) { if (!p) continue; if (/^\s+$/.test(p)) { sp.appendChild(document.createTextNode(p)); continue; }
+    const w = document.createElement('span'); w.className = 'w'; w.textContent = p; sp.appendChild(w); acc += p.replace(/[^\p{L}\p{N}]/gu, '').length + 1 + (/[,;:—–]$/.test(p) ? 3 : 0); sp._w.push([w, acc]); }
+  sp._tot = acc || 1; wordSpan = sp;
+}
+function wordTick() {
+  if (!playing || !isNeural() || !audioFor || audioFor.my !== token || prefs.get('words', true) === false) return;
+  const a = audioFor, t = audio.currentTime; let k = 0; while (k + 1 < a.starts.length && a.starts[k + 1] <= t + 0.05) k++;
+  const sp = spans[a.s0 + k]; if (!sp || ch !== a.ch) return;
+  const t0 = a.starts[k], t1 = (k + 1 < a.starts.length ? a.starts[k + 1] : (audio.duration || t0 + 1)) - styleGap(ch, a.s0 + k, true);
+  const f = Math.max(0, Math.min(1, (t - t0) / Math.max(0.2, t1 - t0)));
+  splitWords(sp); let i = sp._w.findIndex(([, c]) => c / sp._tot >= f); if (i < 0) i = sp._w.length - 1;
+  if (i !== wordIdx) { if (wordIdx >= 0 && sp._w[wordIdx]) sp._w[wordIdx][0].classList.remove('wcur'); sp._w[i][0].classList.add('wcur'); wordIdx = i; }
+}
+(function wordLoop() { try { if (!document.hidden) wordTick(); } catch {} requestAnimationFrame(wordLoop); })();
 audio.addEventListener('pause', () => { // paused by OS / headphones / another app
   if (audio.ended || performance.now() < ignorePauseUntil || !playing || !isNeural()) return;
   playing = false; token++; setPlayBtn();
