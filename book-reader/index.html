@@ -834,11 +834,12 @@ const speakable = t => /[\p{L}\p{N}]/u.test(t);
 // The narrator's own voice reads everything, dialogue included (separate character voices were removed).
 function resample(x, from, to) { if (from === to) return x; const n = Math.round(x.length * to / from), o = new Float32Array(n), r = from / to; for (let i = 0; i < n; i++) { const t = i * r, k = Math.floor(t), f = t - k; o[i] = (x[k] || 0) * (1 - f) + (x[k + 1] || 0) * f; } return o; }
 const sentParts = (c, s) => [{ t: flat[c][s], who: '' }];
-const singleVoiceKey = (c, s, e, v) => v + '|' + (storyMode() ? emoOf(c, s).key : '');
+const singleVoiceKey = (c, s, e, v) => v; // whole passages stay together so the reading follows the grammar
+function groupEmo(c, s, j) { let best = EMO_NONE; for (let k = s; k <= j; k++) { const m = emoOf(c, k); if (m.level > best.level) best = m; } return best; }
 const DEEPEN = {}; // no artificial pitch lowering: it made the voice sound robotic
 const NARR_SPEED = 1.05; // words at ~180 wpm; with natural pauses the overall pace lands at ~150-160 wpm like professional narrators
 async function genChunk(e, v, c, s, j, pri, cache, owner) {
-  const em = storyMode() ? emoOf(c, s) : EMO_NONE, p = em.p;
+  const em = storyMode() ? groupEmo(c, s, j) : EMO_NONE, p = em.p;
   if (e !== 'kokoro') { const r = await NE.gen(e, v, chunkText(c, s, j), pri, cache, owner, ctxFor(c, s, j), 1); return { pcm: r.pcm, sr: r.sr, gain: p.gain }; }
   // The narrator acts the mood: pace, pitch, loudness and a touch of a brighter/darker voice colour.
   const voice = p.mix && !/^[ab]u_/.test(v) ? `${v[0]}x_mix__${v}-${100 - p.mix[1]}__${p.mix[0]}-${p.mix[1]}` : v;
@@ -1145,7 +1146,7 @@ async function speakCurrent() {
 }
 async function speakNeural(my) {
   const e = engineName(), v = $('voice').value, c = ch, s0 = si, j = chunkEnd(c, s0, e), text = chunkText(c, s0, j);
-  let res, waitT = setTimeout(() => { if (my === token) { status('Generating voice…'); stalls++; } }, 400);
+  let res, waited = false, waitT = setTimeout(() => { waited = true; if (my === token) { status('Generating voice…'); stalls++; } }, 400);
   try {
     if (!NE.ready[readyKey(e, v)]) { status(`Loading ${ENGINE_NAMES[e] || e} voice…`); await NE.load(e, v); }
     if (my !== token) return;
@@ -1162,8 +1163,17 @@ async function speakNeural(my) {
     }
     si = j + 1; return speakCurrent();
   }
-  clearTimeout(waitT); if (my !== token || !playing) return;
-  failures = 0; if (/Generating|Loading|Downloading/.test($('status').textContent)) status('');
+  const stalled = waited; clearTimeout(waitT); if (my !== token || !playing) return;
+  if (stalled && e !== 'eleven') { // the device is slower than playback: gather ~25 s of audio first, then read without stopping
+    status('Preparing the next part so it plays smoothly…'); let have = res.pcm.length / res.sr, pj = j;
+    for (let n = 0; n < 12 && have < 25; n++) {
+      const np = nextPos(c, pj); if (!np || np[0] !== c || !speakable(flat[c][np[1]])) break;
+      const ns = np[1], nj = chunkEnd(c, ns, e), rk = readyKey2(e, v, c, ns, nj);
+      let r2 = READY.get(rk); if (!r2) { try { r2 = await genChunk(e, v, c, ns, nj, 0, true, 'play'); READY.set(rk, r2); } catch { break; } }
+      if (my !== token || !playing) return; have += r2.pcm.length / r2.sr; pj = nj;
+    }
+  }
+  failures = 0; if (/Generating|Loading|Downloading|Preparing/.test($('status').textContent)) status('');
   maybeSlowBanner();
   const story = storyMode(), gapFor = q => story ? styleGap(c, q) : (pend[c].has(q) ? 0.35 : 0), out = assemble(res, c, s0, j, story, gapFor(j));
   // Join phrase groups that are already generated into one continuous clip: switching clips is what makes phones hiccup.
@@ -1194,7 +1204,7 @@ audio.addEventListener('pause', () => { // paused by OS / headphones / another a
 });
 audio.addEventListener('error', () => { if (playing && isNeural() && audioFor && audioFor.my === token) { si = audioFor.j + 1; speakCurrent(); } });
 function maybeSlowBanner() {
-  if (bannerShown || engineName() !== 'kokoro' || NE.stats.n < 4 || NE.rtf() < 0.95) return;
+  if (bannerShown || engineName() !== 'kokoro' || NE.stats.n < 2 || NE.rtf() < 0.9) return;
   bannerShown = true; const b = $('banner'); b.classList.remove('hide');
   b.innerHTML = `<span>Kokoro is generating slower than real time on this device (${(1 / NE.rtf()).toFixed(1)}× speed), so you'll hear pauses.</span>`;
   const sw = document.createElement('button'); sw.className = 'btn sm'; sw.textContent = 'Switch to Piper (fast)';
@@ -1576,6 +1586,7 @@ if (!canNeural) { [...$('engine').options].forEach(o => { if (o.value !== 'brows
 $('engine').value = canNeural ? prefs.get('engine', 'kokoro') : 'browser';
 if (synth) synth.onvoiceschanged = () => { if (engineName() === 'browser') fillVoices(); };
 loadUserVoices().finally(fillVoices);
+if (canNeural && engineName() === 'kokoro' && prefs.get('dl', []).includes('kokoro')) setTimeout(() => NE.load('kokoro', $('voice').value || 'am_narrator_v1').catch(() => {}), 1500); // ready before you press Play
 try { navigator.storage && navigator.storage.persist && navigator.storage.persist(); } catch {}
 if (window.innerWidth <= 760) $('side').classList.add('hide');
 renderLib();
