@@ -704,12 +704,14 @@ const NE = {
     return this.gen0(engine, voice, text, pri, cache, owner, ctx, speed);
   },
   gen0(engine, voice, text, pri, cache, owner, ctx, speed) { // speed 1: Kokoro's natural pace sits within the range of popular audiobook narrators
+    const deep = engine === 'kokoro' ? DEEPEN[voice] || 0 : 0, f = 2 ** (deep / 12); // deeper narrator: lower the whole voice a little
+    if (deep) speed *= f;                                                             // (spoken faster, then slowed back down = same pace, lower voice)
     if (engine === 'kokoro' && prefs.get('steady', true) && !/^[ab]s_v\d+__/.test(voice)) voice = voice[0] + 's_v2__' + voice; // same narrator at every sentence length
     const k = engine + '|' + voice + '|' + speed + '|' + text;
     if (cache && this.cache.has(k)) return this.cache.get(k);
     const p = engine === 'eleven' ? EL.gen(voice, text, owner, ctx) : this.call({ type: 'gen', engine, voice, text, pri, owner, speed, gpu: useGPU() }).then(m => {
       const sec = m.pcm.length / m.sr; this.stats.ms += m.ms; this.stats.sec += sec; this.stats.n++;
-      return { pcm: m.pcm, sr: m.sr };
+      return { pcm: deep ? resample(m.pcm, m.sr, Math.round(m.sr * f)) : m.pcm, sr: m.sr };
     });
     if (cache) {
       this.cache.set(k, p); p.catch(() => this.cache.delete(k));
@@ -832,6 +834,7 @@ const speakable = t => /[\p{L}\p{N}]/u.test(t);
 function resample(x, from, to) { if (from === to) return x; const n = Math.round(x.length * to / from), o = new Float32Array(n), r = from / to; for (let i = 0; i < n; i++) { const t = i * r, k = Math.floor(t), f = t - k; o[i] = (x[k] || 0) * (1 - f) + (x[k + 1] || 0) * f; } return o; }
 const sentParts = (c, s) => [{ t: flat[c][s], who: '' }];
 const singleVoiceKey = (c, s, e, v) => v;
+const DEEPEN = { am_narrator_v1: 1.2 }; // semitones lower: a bigger, richer chest voice for the narrator
 const NARR_SPEED = 1.05; // words at ~180 wpm; with natural pauses the overall pace lands at ~150-160 wpm like professional narrators
 async function genChunk(e, v, c, s, j, pri, cache, owner) {
   const r = await NE.gen(e, v, chunkText(c, s, j), pri, cache, owner, ctxFor(c, s, j), e === 'kokoro' ? NARR_SPEED : 1);
