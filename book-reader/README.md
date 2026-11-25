@@ -28,14 +28,8 @@ Neural voices run entirely in your browser (no account, no API key, text never l
 ## Tuned against popular narrators
 Raconteur v2 was tuned by measuring the public preview clips of the 26 most-used storytelling voices on ElevenLabs (pace, pause lengths, pitch range and movement, sentence-final pitch fall, emphasis) and choosing the voice blend and mastering closest to their median. Changes: lighter compression and a natural loudness arc per sentence (more emphasis), and a re-balanced blend whose sentences now fall at the end instead of sounding unfinished. Compare `samples/raconteur-before.mp3` and `samples/raconteur.mp3`.
 
-## Character voices
-The narrator voices dialogue the way a human narrator does: one performer, a different shade per character.
-- **Who's speaking** is worked out from attributions ("said Arthur", "asked his wife", "Mrs. Pennywhistle whispered"), pronouns (resolved to the person just mentioned), and conversational turn-taking.
-- **Each character gets a consistent shade** of the narrator's own voice (a blend that is still 50–60% narrator): deep/gruff, young, older, warm, jolly old man, and four female shades about 5 semitones higher. Age words ("old captain", "young girl") pick the fitting shade.
-- **Range from the text:** whispered → softer and slower; shouted/cried → stronger and quicker; growled → darker; sobbed/pleaded → softer and slower.
-- **Cast list** (⤓ Audio): see every detected character and change the voice of any the app guessed wrong; saved per book.
-- Works fully with Kokoro voices; device voices get pitch/pace shades; ElevenLabs and Piper keep the narrator's voice but follow whispers and shouts.
-- Switch to **Narrator only** in the player to turn it off. Sample: `samples/characters.mp3`.
+## One narrator
+One narrator voice reads the whole book, dialogue included, so the voice never switches mid-scene. The narrator keeps the same tone at every sentence length.
 
 ## Get & share
 Tap **⤴** in the app header:
@@ -47,8 +41,8 @@ Public link: https://audiobook-reader-ten.vercel.app
 
 ## Offline
 1. Open the app from its web address (on iPhone: Safari → Share → Add to Home Screen, then open the Home Screen app).
-2. Tap **⤓ Audio → Make available offline** while connected. It saves the app, book readers (PDF/EPUB/Word), MP3 export, the Kokoro model with the narrator and character voices, and optionally your Piper voice and OCR.
-3. After that, reading, narration with character voices, the library and MP3 export all work with no internet. ElevenLabs needs internet; when offline the app says so and switches to device voices.
+2. Tap **⤓ Audio → Make available offline** while connected. It saves the app, book readers (PDF/EPUB/Word), MP3 export, the Kokoro model with the narrator voice, and optionally your Piper voice and OCR.
+3. After that, reading, narration, the library and MP3 export all work with no internet. ElevenLabs needs internet; when offline the app says so and switches to device voices.
 
 Note for iPhone: Safari and the Home Screen app keep separate storage, so run step 2 inside the app you will actually use.
 

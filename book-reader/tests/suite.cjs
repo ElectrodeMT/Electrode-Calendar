@@ -206,7 +206,7 @@ add('Stress', '20. Chaos: 400 random clicks/seeks/keys while neural audio plays'
 
 add('Style', '25. Storyteller timing rules (pauses, staccato, questions, beats) + export uses them', async p => {
   fs.writeFileSync(F('story.txt'), 'Chapter One\n\nIt was, by all accounts, a perfectly ordinary Tuesday. The rain fell. The kettle sulked. And Arthur, aged sixty-three, decided that today he would finally become an adventurer.\n\n"Where are you going?" asked his wife.\n\n"Out," said Arthur.\n\nHe considered this. Adventurers, he was fairly certain, did not carry umbrellas. Arthur owned none of these things... but he did have a very nice umbrella and a hat.\n\nSo he took it.\n');
-  await open(p, 'story.txt'); assert(await p.$eval('#style', s => s.value) === 'story', 'Storyteller is not the default'); await p.selectOption('#chars', 'off');
+  await open(p, 'story.txt'); assert(await p.$eval('#style', s => s.value) === 'story', 'Storyteller is not the default');
   const g = await p.evaluate(() => { const out = {}; const sents = [...document.querySelectorAll('#text .s')].map(x => x.textContent.trim()); sents.forEach((t, i) => out[t.slice(0, 24)] = +__abr.styleGap(__abr.state.ch, i, true).toFixed(2)); return { out, rate: [__abr.styleRate('So he took it.'), __abr.styleRate('It was, by all accounts, a perfectly ordinary Tuesday.')] }; });
   const o = g.out, want = { 'It was, by all accounts,': 0.3, 'The rain fell.': 0.18, 'The kettle sulked.': 0.3, 'And Arthur, aged sixty-t': 0.7, '"Where are you going?" a': 0.7, '"Out," said Arthur.': 0.65, 'He considered this.': 0.3, 'Arthur owned none of the': 0.95, 'So he took it.': 1.1 };
   for (const [k, v] of Object.entries(want)) assert(o[k] === v, `gap after "${k}" = ${o[k]}, expected ${v}. All: ${JSON.stringify(o)}`);
@@ -252,44 +252,14 @@ add('iPhone', '27. iPhone: export kept in "Your audio files", Save works on tap,
   return `${d.suggestedFilename()} ${size} bytes; hint: ${(await p.textContent('#exHint')).slice(0, 40)}`;
 }, { iphone: true });
 
-add('Characters', '28. Dialogue: speakers, pronouns, turn-taking, whispers; consistent character voices; cast editable; plays & exports', async p => {
-  await open(p, 'dialogue.txt'); await p.selectOption('#engine', 'kokoro'); await p.waitForTimeout(200);
-  const r = await p.evaluate(() => { const n = document.querySelectorAll('#text .s').length, rows = [];
-    for (let s = 0; s < n; s++) { const ps = __abr.parts(0, s); ps.forEach((x, i) => x.who && rows.push({ s, t: x.t, who: x.who, act: x.act, v: __abr.partVoice(0, s, i).voice })); }
-    return { rows, cast: __abr.cast }; });
-  const by = t => r.rows.find(x => x.t.includes(t)) || {};
-  const want = [['Where are you going', 'mrs. pennywhistle'], ['To seek my fortune', 'arthur'], ['Take an umbrella', 'mrs. pennywhistle'], ['do be careful', 'mrs. pennywhistle'], ['I always am', 'arthur'], ['You never are', 'mrs. pennywhistle'], ['Another fool', 'the old captain']];
-  for (const [t, w] of want) assert(by(t).who === w, `"${t}" spoken by ${by(t).who}, expected ${w}`);
-  assert(by('do be careful').act && by('do be careful').act.gain < 0, 'whisper not softer');
-  assert(by('To seek').v === by('I always am').v && by('To seek').v !== by('Take an umbrella').v, 'character voices not consistent/distinct');
-  assert(/raconteur/.test(by('To seek').v), 'character voice should be a shade of the narrator: ' + by('To seek').v);
-  assert(r.cast['the old captain'].voice === 'm2', 'old captain should get the older voice, got ' + r.cast['the old captain'].voice);
-  await p.click('#audioBtn'); const names = await p.$$eval('#castList li .t', l => l.map(x => x.textContent)); assert(names.length === 3, 'cast list ' + names.join('|'));
-  await castSet(p, 'Arthur', 0, 'm3'); await p.keyboard.press('Escape');
-  const v2 = await p.evaluate(() => { const n = document.querySelectorAll('#text .s').length; for (let s = 0; s < n; s++) { const ps = __abr.parts(0, s); const i = ps.findIndex(x => x.who === 'arthur'); if (i >= 0) return __abr.partVoice(0, s, i).voice; } });
-  assert(/af_kore/.test(v2), 'cast change not applied: ' + v2);
-  await testEngine(p); await p.click('#play'); await p.waitForFunction(() => /Finished/.test(document.getElementById('status').textContent), null, { timeout: 30000 });
-  await p.click('#audioBtn'); await p.selectOption('#exScope', 'ch'); await p.selectOption('#exFmt', 'wav');
-  const [d] = await Promise.all([p.waitForEvent('download', { timeout: 30000 }), p.click('#exStart')]);
-  return `${r.rows.length} character lines, 4 characters, export ${(fs.statSync(await d.path()).size / 48000).toFixed(1)}s`;
+add('Narrator', '28. One narrator reads everything: dialogue uses the narrator voice, no character controls', async p => {
+  await open(p, 'dialogue.txt'); await testEngine(p);
+  const r = await p.evaluate(() => ({ ctl: !!document.getElementById('chars') || !!document.getElementById('castList'),
+    parts: [...document.querySelectorAll('#text .s')].map((_, i) => __abr.parts(0, i).length) }));
+  assert(!r.ctl, 'character voice controls still present'); assert(r.parts.every(n => n === 1), 'a sentence is still split between voices');
+  await p.click('#play'); await p.waitForFunction(() => __abr.state.si >= 2, null, { timeout: 15000 }); await p.click('#play');
+  return `${r.parts.length} sentences, all narrator`;
 });
-
-add('Characters', '29. Dash/«» dialogue, action beats, name linking, "same person" control, ElevenLabs character voices', async p => {
-  await mockEleven(p); await open(p, 'dialogue2.txt'); await p.selectOption('#engine', 'kokoro'); await p.waitForTimeout(200);
-  const who = await p.evaluate(() => { const n = document.querySelectorAll('#text .s').length, m = {};
-    for (let s = 0; s < n; s++) __abr.parts(0, s).forEach(x => { if (x.who) m[x.t.slice(0, 18)] = x.who; }); return { m, cast: Object.keys(__abr.cast) }; });
-  const W = [['Are you coming bac', 'mrs. pennywhistle'], ['Of course,', 'arthur'], ['«Good luck,»', 'mrs. pennywhistle'], ['"Fine.', 'arthur'], ['"Mr. Pennywhistle!', 'the old captain'], ['"Where are you goi', 'mrs. pennywhistle']];
-  for (const [t, w] of W) assert(who.m[t] === w, `"${t}" → ${who.m[t]}, expected ${w}. All: ${JSON.stringify(who.m)}`);
-  assert(who.cast.length === 3, 'cast: ' + who.cast.join('|'));
-  await p.click('#audioBtn'); await castSet(p, 'The old captain', 1, 'arthur'); await p.waitForTimeout(200);
-  const after = await p.evaluate(() => Object.keys(__abr.cast)); assert(after.length === 2 && !after.includes('the old captain'), 'merge failed: ' + after.join('|'));
-  await p.evaluate(() => { localStorage.clear(); }); await p.keyboard.press('Escape');
-  await setKey(p, 'good-key'); await p.waitForFunction(() => document.getElementById('engine').value === 'eleven', null, { timeout: 10000 }); await p.keyboard.press('Escape');
-  const ev = await p.evaluate(() => { const n = document.querySelectorAll('#text .s').length, m = {}; for (let s = 0; s < n; s++) __abr.parts(0, s).forEach((x, i) => { if (x.who) m[x.who] = __abr.partVoice(0, s, i).voice; }); return m; });
-  assert(ev['arthur'] === 'bbb' && ev['mrs. pennywhistle'] === 'aaa', 'ElevenLabs character voices: ' + JSON.stringify(ev));
-  return `dash/«»/action beats ok; merge ok; ElevenLabs voices ${JSON.stringify(ev)}`;
-});
-
 add('Offline', '30. Make available offline, then with the network blocked: app loads, opens Word/text, plays, exports MP3', async p => {
   await p.waitForFunction(() => navigator.serviceWorker.controller, null, { timeout: 15000 });
   await p.click('#audioBtn'); await p.uncheck('#offKokoro'); await p.click('#offGo');

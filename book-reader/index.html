@@ -77,8 +77,6 @@ dialog h4{margin:18px 0 6px;font-size:13px;text-transform:uppercase;letter-spaci
 dialog .r{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin:6px 0}
 dialog p{margin:6px 0;font-size:14px;color:var(--muted)}
 #myVoices li{cursor:default;flex-wrap:wrap;border:1px solid var(--line);margin-bottom:6px}
-#castList li{cursor:default;flex-wrap:wrap;border:1px solid var(--line);margin-bottom:6px}
-#castList select{max-width:180px}
 #exFiles li{cursor:default;flex-wrap:wrap;border:1px solid var(--line);margin-bottom:6px}
 #exFiles li .t{min-width:0}
 #exFiles .acts{display:flex;gap:6px;margin-left:auto}
@@ -131,7 +129,6 @@ dialog p{margin:6px 0;font-size:14px;color:var(--muted)}
     <label class="opt">Speed <input type="range" id="rate" min="0.5" max="3" step="0.1" value="1"><span id="rateV">1.0×</span></label>
     <label class="opt" id="pitchL">Pitch <input type="range" id="pitch" min="0.5" max="1.5" step="0.1" value="1"></label>
     <label class="opt">Text <input type="range" id="fs" min="14" max="32" step="1" value="20"></label>
-    <label class="opt" title="The narrator gives each character their own shade of voice, and follows whispers, shouts and other cues">Characters <select id="chars"><option value="on">Voiced</option><option value="off">Narrator only</option></select></label>
     <label class="opt" title="Storyteller: pauses, rhythm and comic timing modelled on professional audiobook narration">Style <select id="style"><option value="story">Storyteller</option><option value="plain">Plain</option></select></label>
     <label class="opt">Sleep <select id="sleep"><option value="0">Off</option><option value="5">5 min</option><option value="15">15 min</option><option value="30">30 min</option><option value="60">60 min</option><option value="ch">End of chapter</option></select></label>
   </div>
@@ -199,10 +196,6 @@ dialog p{margin:6px 0;font-size:14px;color:var(--muted)}
   <div class="r"><button class="btn primary" id="offGo">Make available offline</button></div>
   <div class="bar hide" id="offBar"><i></i></div>
   <p id="offStatus"></p>
-  <h4>Characters in this book</h4>
-  <p id="castHint">With Kokoro voices, the narrator gives each character a consistent shade of voice. Change any that were guessed wrong.</p>
-  <ul class="list" id="castList" style="padding:0"></ul>
-  <div class="r hide" id="piperCharsRow"><label class="opt"><input type="checkbox" id="piperChars"> Give characters their own Piper voices (downloads up to 8 extra voices, about 60 MB each, once)</label></div>
   <h4>Speed & hardware</h4>
   <div class="r"><label class="opt"><input type="checkbox" id="gpu"> Use the GPU for Kokoro (much faster, but a 326 MB download instead of 92 MB)</label></div>
   <p id="diag"></p>
@@ -613,7 +606,6 @@ async function loadBook(b, persist = true) {
   pend = b.chapters.map(c => { const s = new Set(); let k = 0; for (const p of c.paras) { k += p.length; s.add(k - 1); } return s; });
   chLen = flat.map(a => a.reduce((n, t) => n + t.length + 1, 0)); tailLen = []; for (let c = flat.length - 1, acc = 0; c >= 0; c--) { tailLen[c] = acc; acc += chLen[c]; }
   const pos = prefs.get('pos.' + b.id, null) || { ch: b.ch || 0, si: b.si || 0 }; b.ch = pos.ch; b.si = pos.si;
-  analyzeDialogue();
   ch = Math.min(b.ch || 0, flat.length - 1); si = Math.min(b.si || 0, flat[ch].length - 1);
   $('title').textContent = b.name; document.title = b.name + ' | Audiobook Reader';
   $('drop').classList.add('hide'); if (persist) await db.put(b); renderTOC(); renderChapter(); renderLib();
@@ -832,204 +824,14 @@ const silence = (sr, sec) => new Float32Array(Math.round(sr * sec));
 function ctxFor(c, s, j) { return { prev: s > 0 ? flat[c].slice(Math.max(0, s - 3), s).join(' ') : '', next: j + 1 < flat[c].length ? flat[c].slice(j + 1, j + 4).join(' ') : '' }; }
 const speakable = t => /[\p{L}\p{N}]/u.test(t);
 
-// ---------- Characters: who is speaking, and how the narrator voices them ----------
-const SPEECH_VERBS = 'said|says|asked|asks|replied|answered|whispered|shouted|yelled|cried|called|muttered|murmured|added|continued|snapped|laughed|sighed|exclaimed|demanded|insisted|began|repeated|growled|hissed|breathed|admitted|agreed|interrupted|protested|pleaded|warned|announced|declared|explained|suggested|wondered|roared|screamed|bellowed|grumbled|whimpered|sobbed|chuckled|giggled|teased|offered|mumbled|stammered|barked|retorted|called out|told';
-const FEMALE_WORDS = /\b(she|her|wife|mother|mum|mom|girl|woman|lady|mrs|miss|ms|madam|queen|princess|sister|aunt|daughter|grandmother|granny|grandma|duchess|nurse|witch|maid|widow)\b/i;
-const MALE_WORDS = /\b(he|his|him|husband|father|dad|boy|man|gentleman|mr|sir|king|prince|brother|uncle|son|grandfather|grandpa|duke|lord|wizard|monk|priest|captain|old man)\b/i;
-const FEMALE_NAMES = new Set('mary anna anne emma olivia sophia ava isabella mia charlotte amelia harper evelyn abigail emily elizabeth sofia ella madison scarlett victoria grace chloe camila penelope riley layla lillian nora zoey hannah lily eleanor hazel violet aurora lucy alice jane sarah rachel rebecca ruth esther margaret helen dorothy betty susan karen nancy lisa linda laura kate katherine catherine julia rose molly clara ellie hermione ginny luna arya sansa cersei daenerys bella jessica jennifer amy beth meg jo marilla diana eliza fanny marianne elinor harriet jean claire nina eva maya leah zoe ivy ruby sophie matilda wendy dorothea agnes edith martha'.split(' '));
-const MALE_NAMES = new Set('james john robert michael william david richard joseph thomas charles christopher daniel matthew anthony mark paul steven andrew kenneth joshua kevin brian george edward ronald timothy jason jeffrey ryan jacob gary nicholas eric jonathan stephen larry justin scott brandon benjamin samuel frank gregory raymond alexander patrick jack dennis jerry tyler aaron henry adam peter nathan arthur harry ron albus severus frodo sam bilbo gandalf aragorn tom huck oliver noah liam elijah lucas mason logan ethan leo max oscar hugo felix theo jon tyrion jaime ned bran rob sherlock watson holmes darcy bingley heathcliff pip rhett ahab ishmael atticus jem nick gatsby holden victor walter jesse hank luke han obi bob bill fred ted ben dan jim joe tim'.split(' '));
-const NOT_NAMES = new Set('the a an he she it they we i you his her their then and but so as when while after before at in on of with to for from this that there here what why how yes no oh well now just still again also only even then everyone someone nobody somebody chapter'.split(' '));
-const VOICE_ACTS = [ // narrator's range, triggered by the attribution verb
-  [/whisper|murmur|breath|mumbl|hush/i, { gain: -5, speed: 0.92 }],
-  [/shout|yell|roar|bellow|scream|cried|exclaim|snap|bark/i, { gain: 2.5, speed: 1.06 }],
-  [/growl|hiss|grumbl|retort/i, { gain: -1, speed: 0.95 }],
-  [/whimper|sob|plead|stammer/i, { gain: -3, speed: 0.9 }],
-  [/laugh|chuckl|gigg|teas/i, { gain: 0.5, speed: 1.04 }]
-];
-let dlg = []; // dlg[c][s] = [{ t, who, act }]   who: '' = narrator
-let cast = new Map(); // key -> { name, gender, lines, auto }
-function genderOf(phrase) { const w = phrase.toLowerCase().split(/\s+/); if (w.some(x => FEMALE_NAMES.has(x))) return 'f'; if (w.some(x => MALE_NAMES.has(x))) return 'm'; return FEMALE_WORDS.test(phrase) ? 'f' : MALE_WORDS.test(phrase) ? 'm' : ''; }
-function findSpeaker(narr) {
-  const V = SPEECH_VERBS;
-  const nm = '((?:(?:Mr|Mrs|Ms|Dr|Miss|Sir|Lady|Lord|Captain|Professor|Aunt|Uncle)\\.? )?(?:the |his |her |my |old |young |little )*[A-Z][\\p{L}\'’-]+(?: [A-Z][\\p{L}\'’-]+)?|he|she|his wife|her husband|the [a-z]+(?: [a-z]+)?)';
-  let m = narr.match(new RegExp(`\\b(?:${V})\\s+${nm}`, 'u')) || narr.match(new RegExp(`${nm}\\s+(?:${V})\\b`, 'u'));
-  if (!m) return null;
-  const who = m[1].trim(), verb = (narr.match(new RegExp(`\\b(${V})\\b`)) || [])[1] || '';
-  if (NOT_NAMES.has(who.toLowerCase()) && !/^(he|she)$/i.test(who)) return null;
-  return { who, verb };
-}
-function quoteSpans(P) {
-  const spans = []; let m;
-  if (/^\s*[—–―]/.test(P)) { // dash dialogue: "— Where are you going? — asked his wife. — Out."
-    const cuts = []; const re = /(^\s*|\s)[—–―]\s?/g; while ((m = re.exec(P))) cuts.push([m.index, m.index + m[0].length]);
-    cuts.forEach(([, st], i) => { const en = i + 1 < cuts.length ? cuts[i + 1][0] : P.length, seg = P.slice(st, en);
-      const narr = i > 0 && (/^\s*\p{Ll}/u.test(seg) || new RegExp(`^\\s*(?:${SPEECH_VERBS})\\b`, 'i').test(seg));
-      if (!narr && /[\p{L}\p{N}]/u.test(seg)) spans.push([st, en]); });
-    return spans;
-  }
-  const re = /“[^”]*”?|"[^"]*"?|«[^»]*»?|„[^“”]*[“”]?|‘(?=\S)[^’]*’(?=[\s,.;:!?—–-]|$)/g;
-  while ((m = re.exec(P))) if (/[\p{L}\p{N}]/u.test(m[0])) spans.push([m.index, m.index + m[0].length]);
-  return spans;
-}
-function analyzeDialogue() {
-  dlg = []; cast = new Map(); if (!book) return;
-  const saved = prefs.get('cast.' + book.id, {}), alias = prefs.get('alias.' + book.id, {});
-  // 1) learn full names from the whole book ("Arthur Pennywhistle") so titles, surnames and "his wife" can be linked
-  const surnameOf = {}, firstsBySurname = {};
-  for (const chp of book.chapters) for (const para of chp.paras) for (const mm of para.join(' ').matchAll(/\b([A-Z][a-z]+)(?= ([A-Z][a-z]{2,})\b)/g)) { // lookahead: 'And Arthur Pennywhistle' still finds 'Arthur Pennywhistle'
-    const f = mm[1].toLowerCase(), g = FEMALE_NAMES.has(f) ? 'f' : MALE_NAMES.has(f) ? 'm' : ''; if (!g || NOT_NAMES.has(mm[2].toLowerCase())) continue;
-    surnameOf[f] = mm[2]; (firstsBySurname[mm[2].toLowerCase()] ||= new Map()).set(f, g);
-  }
-  const cap = x => x.replace(/^./, c => c.toUpperCase());
-  let lastF = null, lastM = null, namedF = null, namedM = null, prev = [];
-  function canon(name, g) { // -> { key, name, g }
-    let n = name.trim().replace(/\s+/g, ' '), low = n.toLowerCase();
-    const first = w => (w || '').split(' ')[0].toLowerCase();
-    if (/^his wife$/.test(low) && namedM) { const sn = surnameOf[first(namedM)]; return sn ? canon('Mrs. ' + sn, 'f') : { key: first(namedM) + "'s wife", name: cap(namedM.split(' ')[0]) + "'s wife", g: 'f' }; }
-    if (/^her husband$/.test(low) && namedF) { const sn = surnameOf[first(namedF)]; return sn ? canon('Mr. ' + sn, 'm') : { key: first(namedF) + "'s husband", name: cap(namedF.split(' ')[0]) + "'s husband", g: 'm' }; }
-    let t = n.match(/^(Mr|Mrs|Ms|Miss|Sir|Lord|Lady|Dr|Captain|Professor)\.? ([A-Z][\p{L}'’-]+)$/u);
-    if (t) {
-      const tg = /^(Mrs|Ms|Miss|Lady)$/.test(t[1]) ? 'f' : /^(Mr|Sir|Lord)$/.test(t[1]) ? 'm' : g, fam = firstsBySurname[t[2].toLowerCase()];
-      const same = fam ? [...fam].filter(([, gg]) => gg === tg) : []; if (same.length === 1) return { key: same[0][0], name: cap(same[0][0]), g: tg };
-      return { key: `${t[1].toLowerCase()}. ${t[2].toLowerCase()}`.replace('..', '.'), name: `${t[1]}. ${t[2]}`.replace('..', '.'), g: tg || g };
-    }
-    t = n.match(/^([A-Z][a-z]+) [A-Z][a-z]{2,}$/); if (t && (FEMALE_NAMES.has(t[1].toLowerCase()) || MALE_NAMES.has(t[1].toLowerCase()))) return { key: t[1].toLowerCase(), name: t[1], g: genderOf(t[1]) || g };
-    return { key: low.replace(/^(the|his|her|my) /, '$1 '), name: cap(n), g };
-  }
-  const note = (c0) => { let key = c0.key, hops = 0; while (alias[key] && hops++ < 5) key = alias[key];
-    if (!cast.has(key)) cast.set(key, { name: key === c0.key ? c0.name : cap(key), gender: c0.g, lines: 0 }); const r = cast.get(key); r.lines++; if (!r.gender && c0.g) r.gender = c0.g; return key; };
-  const knownSubject = narr => { // action beat: "Arthur grinned." / "The old captain looked up."
-    const m = narr.match(/(?:^|[.!?]\s+|\|\s*)((?:(?:Mr|Mrs|Ms|Miss|Dr|Sir|Lady|Lord|Captain)\.? )?[A-Z][a-z]+(?: [A-Z][a-z]+)?|[Tt]he (?:[a-z]+ ){0,2}?(?:man|woman|girl|boy|captain|king|queen|old man|old woman|stranger|soldier|guard|doctor|lady|gentleman)|He|She)\s+[a-z]+(?:ed|s)\b/);
-    if (!m || NOT_NAMES.has(m[1].toLowerCase()) && !/^(he|she)$/i.test(m[1])) return null;
-    const w = m[1]; if (/^(he|she)$/i.test(w)) return { who: w, verb: '' };
-    return genderOf(w) || cast.has(canon(w, '').key) || /^(Mr|Mrs|Ms|Miss|Dr|Sir|Lady|Lord|Captain)/.test(w) ? { who: w, verb: '' } : null;
-  };
-  book.chapters.forEach((chp, c) => {
-    dlg[c] = [];
-    for (const para of chp.paras) {
-      const P = para.join(' '), spans = quoteSpans(P);
-      let who = '', act = null;
-      if (spans.length) {
-        let narr = '', k = 0; for (const [a, b] of spans) { narr += P.slice(k, a) + ' | '; k = b; } narr += P.slice(k);
-        const sp = findSpeaker(narr) || knownSubject(narr);
-        if (sp) {
-          let name = sp.who, g = genderOf(name);
-          if (/^(he|she)$/i.test(name)) { // a pronoun: prefer someone just mentioned in this paragraph, else the last speaker of that gender
-            g = /^he$/i.test(name) ? 'm' : 'f'; const before = narr.split(' | ')[0], cands = [];
-            for (const mm of before.matchAll(/\b(?:[Tt]he|[Aa]n?|[Hh]is|[Hh]er)\s+((?:[a-z]+\s+){0,2}?(?:wife|mother|mum|mom|girl|woman|lady|queen|princess|sister|aunt|daughter|grandmother|granny|duchess|nurse|witch|maid|widow|husband|father|dad|boy|man|gentleman|king|prince|brother|uncle|son|grandfather|duke|lord|wizard|monk|priest|captain|stranger|soldier|guard|doctor|teacher|farmer|sailor|driver|innkeeper))\b|\b((?:(?:Mr|Mrs|Ms|Dr|Miss|Sir|Lady|Lord)\.? )?[A-Z][\p{L}'’-]+(?: [A-Z][\p{L}'’-]+)?)/gu)) {
-              const np = mm[1] ? 'the ' + mm[1] : mm[2]; if (mm[2] && NOT_NAMES.has(mm[2].toLowerCase())) continue; if (genderOf(np) === g) cands.push(np);
-            }
-            name = cands.length ? cands[cands.length - 1] : (g === 'm' ? lastM : lastF) || (g === 'f' ? 'a woman' : 'a man');
-          }
-          const cn = canon(name, g || genderOf(name)); who = note(cn);
-          const gg = cast.get(who).gender, disp = cast.get(who).name; if (gg === 'f') lastF = disp; else if (gg === 'm') lastM = disp;
-          for (const [re, a] of VOICE_ACTS) if (re.test(sp.verb)) { act = a; break; }
-        } else if (prev.length >= 2 && prev[0] && prev[1] && prev[0] !== prev[1]) { who = prev[1]; cast.get(who).lines++; } // conversation turn-taking
-        else who = note({ key: 'someone', name: 'Someone', g: '' });
-      }
-      prev = spans.length ? [who, prev[0] || ''] : [];
-      for (const mm of P.matchAll(/\b([A-Z][a-z]+)\b/g)) { const w = mm[1].toLowerCase(); if (MALE_NAMES.has(w)) namedM = lastM = mm[1]; else if (FEMALE_NAMES.has(w)) namedF = lastF = mm[1]; } // people mentioned
-      let off = 0;
-      for (const sen of para) {
-        const a0 = off, b0 = off + sen.length, parts = []; let cur = a0;
-        for (const [a, b] of spans) {
-          if (b <= a0 || a >= b0) continue;
-          const qa = Math.max(a, a0), qb = Math.min(b, b0);
-          if (qa > cur) parts.push({ t: P.slice(cur, qa), who: '' });
-          parts.push({ t: P.slice(qa, qb).replace(/^\s*[—–―]\s?/, ''), who, act }); cur = qb;
-        }
-        if (cur < b0) parts.push({ t: P.slice(cur, b0).replace(/^\s*[—–―]\s?/, ''), who: '' });
-        dlg[c].push(parts.map(x => ({ ...x, t: x.t.trim() })).filter(x => /[\p{L}\p{N}]/u.test(x.t)));
-        off = b0 + 1;
-      }
-    }
-  });
-  const used = new Set(), AGE = { m: { old: 'm2', young: 'm1' }, f: { old: 'f3', young: 'f2' }, n: { old: 'n1', young: 'n2' } };
-  [...cast.entries()].sort((a, b) => b[1].lines - a[1].lines).forEach(([k, r]) => {
-    const g = r.gender || 'n', age = /\b(old|elderly|aged|grand\w*|granny|ancient)\b/i.test(r.name) ? 'old' : /\b(young|little|boy|girl|kid|child|lad|lass)\b/i.test(r.name) ? 'young' : '';
-    let pick = age && !used.has(AGE[g][age]) ? AGE[g][age] : null;
-    for (let i = 0; !pick && i < 4; i++) if (!used.has(g + i)) pick = g + i;
-    pick ||= g + (used.size % 4); used.add(pick); r.auto = pick; r.voice = saved[k] || pick;
-  });
-}
-const charsOn = () => $('chars').value === 'on';
-const CHAR_STYLES = { // shades of the narrator: [other style, share of it, speed]
-  // Only well-rated Kokoro voices (A to C+) are used as ingredients: low-rated ones (D/F) made characters flat and robotic.
-  // Measured on an expressive line vs. the narrator: women +3 to +5.5 semitones with full liveliness; men differ by tone and pace.
-  m0: ['am_fenrir', 0.5, 0.95, 'Gruff man'], m1: ['am_puck', 0.5, 1.05, 'Young man'], m2: ['am_michael', 0.5, 0.92, 'Older, slower man'], m3: ['af_kore', 0.3, 1.02, 'Light, boyish man'],
-  f0: ['af_bella', 0.4, 1.0, 'Woman'], f1: ['af_sarah', 0.5, 0.98, 'Elegant woman'], f2: ['af_bella', 0.55, 1.05, 'Bright young woman'], f3: ['af_heart', 0.4, 0.95, 'Soft, gentle woman'],
-  n0: ['am_michael', 0.3, 1.0, 'Neutral'], n1: ['am_fenrir', 0.3, 0.96, 'Neutral, older'], n2: ['af_kore', 0.3, 1.03, 'Neutral, lighter'], n3: ['am_puck', 0.3, 1.0, 'Neutral, livelier'],
-  narrator: [null, 0, 1, 'Narrator (no change)']
-};
-const PIPER_CHARS = { m: ['en_US-ryan-medium', 'en_GB-alan-medium', 'en_US-joe-medium', 'en_GB-northern_english_male-medium'], f: ['en_US-amy-medium', 'en_GB-jenny_dioco-medium', 'en_US-kristin-medium', 'en_GB-alba-medium'] };
-const elGender = x => { const l = x.labels || {}, g = String(l.gender || l.Gender || '').toLowerCase(); return g.startsWith('f') ? 'f' : g.startsWith('m') ? 'm' : ''; };
-function elCharVoice(key, r, narr) { // a different ElevenLabs voice from the user's account for each character
-  const pick = prefs.get('castel.' + (book && book.id), {})[key]; if (pick) return pick;
-  const pool = (EL.voices || []).filter(x => x.voice_id !== narr).sort((a, b) => (a.category === 'premade' ? 0 : 1) - (b.category === 'premade' ? 0 : 1) || a.name.localeCompare(b.name));
-  const same = pool.filter(x => elGender(x) === (r.gender || 'm')), list = same.length ? same : pool, idx = +String(r.voice).slice(1) || 0;
-  return list.length ? list[idx % list.length].voice_id : null;
-}
-function partVoice(part, e, v) { // -> { voice, speed, gain }
-  const a = part.act || {}, base = { voice: v, speed: a.speed || 1, gain: a.gain || 0 };
-  if (!part.who || !charsOn()) return base;
-  const r = cast.get(part.who); if (!r) return base;
-  if (e === 'eleven') { const id = elCharVoice(part.who, r, v); return id ? { voice: id, speed: 1, gain: base.gain } : base; }
-  const st = CHAR_STYLES[r.voice] || CHAR_STYLES.n0; if (!st[0]) return base;
-  if (e === 'piper') { const g = String(r.voice)[0], list = PIPER_CHARS[g], id = prefs.get('piperChars', false) && /^en_/.test(v) && list ? list[+String(r.voice).slice(1) % list.length] : null; return id && id !== v ? { voice: id, speed: 1, gain: base.gain } : base; }
-  if (e !== 'kokoro') return base;
-  const own = 1 - st[1], id = `${v[0]}x_mix__${v}-${Math.round(own * 100)}__${st[0]}-${Math.round(st[1] * 100)}`;
-  return { voice: id, speed: +(st[2] * (a.speed || 1)).toFixed(3), gain: base.gain };
-}
+// ---------- One narrator ----------
+// The narrator's own voice reads everything, dialogue included (separate character voices were removed).
 function resample(x, from, to) { if (from === to) return x; const n = Math.round(x.length * to / from), o = new Float32Array(n), r = from / to; for (let i = 0; i < n; i++) { const t = i * r, k = Math.floor(t), f = t - k; o[i] = (x[k] || 0) * (1 - f) + (x[k + 1] || 0) * f; } return o; }
-function joinGap(pt) { // pause between a quote and its attribution, set by punctuation like a narrator would
-  const t = pt.t.replace(/["”’»“„]+$/, '');
-  if (/[,;:—–-]$/.test(t)) return pt.who ? 0.1 : 0.12;
-  if (/[.!?…]$/.test(t)) return 0.3;
-  return 0.14;
-}
-const sentParts = (c, s) => (charsOn() && dlg[c] && dlg[c][s] && dlg[c][s].length ? dlg[c][s] : [{ t: flat[c][s], who: '' }]); // 'Narrator only' reads sentences whole
-const singleVoiceKey = (c, s, e, v) => { const ps = sentParts(c, s); if (ps.length !== 1) return null; const pv = partVoice(ps[0], e, v); return pv.voice + '|' + pv.speed + '|' + pv.gain; };
-// Generate one phrase group. Mixed narrator/character sentences are voiced part by part and joined with a short natural gap.
+const sentParts = (c, s) => [{ t: flat[c][s], who: '' }];
+const singleVoiceKey = (c, s, e, v) => v;
 async function genChunk(e, v, c, s, j, pri, cache, owner) {
-  const ps = sentParts(c, s);
-  if (s === j && ps.length > 1) {
-    const outs = await Promise.all(ps.map(pt => { const pv = partVoice(pt, e, v); return NE.gen(e, pv.voice, speechText(pt.t), pri, cache, owner, null, pv.speed).then(r => ({ r, pv, pt })); }));
-    const sr = outs[0].r.sr, parts = [];
-    outs.forEach(({ r, pv, pt }, i) => {
-      const x = fade(trimSilence(resample(r.pcm, r.sr, sr), sr), sr), rr = speechRms(x, sr), g = (rr ? 0.1 / rr : 1) * 10 ** (pv.gain / 20); // match loudness across voices
-      for (let k = 0; k < x.length; k++) x[k] *= g; parts.push(x); if (i < outs.length - 1) parts.push(silence(sr, joinGap(pt)));
-    });
-    return { pcm: concat(parts), sr, gain: 0 };
-  }
-  const pv = partVoice(ps[0], e, v), r = await NE.gen(e, pv.voice, chunkText(c, s, j), pri, cache, owner, ctxFor(c, s, j), pv.speed);
-  return { pcm: r.pcm, sr: r.sr, gain: pv.gain };
-}
-function renderCast() {
-  const ul = $('castList'); ul.innerHTML = ''; const e = engineName();
-  const list = [...cast.entries()].filter(([, r]) => r.lines).sort((a, b) => b[1].lines - a[1].lines);
-  $('castHint').textContent = !book ? 'Open a book to see its characters.' : !list.length ? 'No dialogue found in this book.' :
-    e === 'kokoro' ? 'The narrator gives each character a consistent shade of voice. Change a voice, or link two names that are the same person.' :
-    e === 'eleven' ? 'Each character gets a different voice from your ElevenLabs account. Change any here.' :
-    e === 'piper' ? 'Turn on extra Piper voices below to give characters their own voices.' : 'Device voices shift pitch and pace for each character.';
-  $('piperCharsRow').classList.toggle('hide', e !== 'piper');
-  for (const [k, r] of list.slice(0, 40)) {
-    const li = document.createElement('li'), t = document.createElement('span'), sel = document.createElement('select'), same = document.createElement('select');
-    t.className = 't'; t.textContent = `${r.name} · ${r.lines} line${r.lines === 1 ? '' : 's'}`; sel.setAttribute('aria-label', 'Voice for ' + r.name); same.setAttribute('aria-label', r.name + ' is the same person as');
-    if (e === 'eleven' && EL.voices) {
-      const cur = elCharVoice(k, r, $('voice').value); sel.add(new Option('Narrator voice', '__narr'));
-      for (const x of EL.voices) sel.add(new Option(x.name.split(' - ')[0] + (x.voice_id === cur ? ' (current)' : ''), x.voice_id));
-      sel.value = cur || '__narr';
-      sel.onchange = () => { const all = prefs.get('castel.' + book.id, {}); all[k] = sel.value === '__narr' ? $('voice').value : sel.value; prefs.set('castel.' + book.id, all); if (playing) jump(ch, si, true); };
-    } else {
-      for (const [id, st] of Object.entries(CHAR_STYLES)) sel.add(new Option(st[3] + (id === r.auto ? ' (auto)' : ''), id));
-      sel.value = r.voice;
-      sel.onchange = () => { r.voice = sel.value; const all = prefs.get('cast.' + book.id, {}); all[k] = sel.value; prefs.set('cast.' + book.id, all); if (playing) jump(ch, si, true); };
-    }
-    same.add(new Option('Different person', ''));
-    for (const [k2, r2] of list) if (k2 !== k) same.add(new Option('Same as ' + r2.name, k2));
-    same.onchange = () => { const al = prefs.get('alias.' + book.id, {}); if (same.value) al[k] = same.value; else delete al[k]; prefs.set('alias.' + book.id, al); analyzeDialogue(); renderCast(); if (playing) jump(ch, si, true); };
-    li.append(t, sel, same); ul.appendChild(li);
-  }
+  const r = await NE.gen(e, v, chunkText(c, s, j), pri, cache, owner, ctxFor(c, s, j), 1);
+  return { pcm: r.pcm, sr: r.sr, gain: 0 };
 }
 
 // ---------- "Storyteller" narration style ----------
@@ -1263,10 +1065,9 @@ async function speakCurrent() {
   if (isNeural()) return speakNeural(my);
   const v = browserVoices.find(v => v.voiceURI === $('voice').value), parts = sentParts(ch, si);
   const pauseMs = storyMode() ? Math.max(0, styleGap(ch, si) - 0.15) * 1000 : 0; // device voices add ~0.15 s themselves
-  const DEV = { m0: [0.86, 0.95], m1: [1.1, 1.05], m2: [0.9, 0.92], m3: [1.08, 1.02], f0: [1.3, 1.02], f1: [1.22, 1], f2: [1.4, 1.04], f3: [1.25, 0.97], n0: [1.05, 1], n1: [0.95, 0.97], n2: [1.12, 1.03], n3: [1.15, 1] };
   parts.forEach((pt, i) => {
     const u = new SpeechSynthesisUtterance(speechText(pt.t)); if (v) { u.voice = v; u.lang = v.lang; }
-    const r = pt.who && charsOn() ? cast.get(pt.who) : null, d = (r && DEV[r.voice]) || [1, 1], a = pt.act || {};
+    const d = [1, 1], a = {};
     u.rate = Math.min(+$('rate').value * styleRate(text) * d[1] * (a.speed || 1), 2.5); u.pitch = Math.max(0.1, Math.min(2, +$('pitch').value * d[0])); u.volume = Math.min(1, 10 ** ((a.gain || 0) / 20));
     if (i === parts.length - 1) {
       u.onend = () => { if (my !== token || !playing) return; si++; pauseMs ? setTimeout(() => { if (my === token && playing) speakCurrent(); }, pauseMs) : speakCurrent(); };
@@ -1591,7 +1392,7 @@ async function refreshDiag() {
     $('storage').textContent = `This site is using ${(est.usage / 1e6).toFixed(0)} MB of storage. Downloaded: ${prefs.get('dl', []).map(k => k.replace('piper|', 'Piper ')).join(', ') || 'none yet'}.`;
   } catch { $('storage').textContent = 'Storage info unavailable.'; }
 }
-function openAudio() { refreshDiag(); renderExports(); renderCast(); offlineInfo(); renderMyVoices(); if (!$('audioDlg').open) $('audioDlg').showModal(); }
+function openAudio() { refreshDiag(); renderExports(); offlineInfo(); renderMyVoices(); if (!$('audioDlg').open) $('audioDlg').showModal(); }
 $('audioBtn').onclick = openAudio;
 function elKeyState() { $('elKey').placeholder = EL.key() ? 'Key saved (paste a new one to replace)' : 'ElevenLabs API key'; if (!EL.key()) $('elInfo').textContent = 'No key saved.'; }
 $('elSave').onclick = async () => {
@@ -1653,8 +1454,6 @@ $('rate').oninput = e => { $('rateV').textContent = (+e.target.value).toFixed(1)
 $('rate').onchange = () => { if (playing && !isNeural()) jump(ch, si); };
 $('pitch').onchange = e => { prefs.set('pitch', e.target.value); if (playing && !isNeural()) jump(ch, si); };
 $('fs').oninput = e => { document.documentElement.style.setProperty('--fs', e.target.value + 'px'); prefs.set('fs', e.target.value); };
-$('piperChars').onchange = e => { prefs.set('piperChars', e.target.checked); status(e.target.checked ? 'Characters will use extra Piper voices (downloaded the first time they speak).' : 'Characters use the narrator\'s Piper voice.'); if (playing) jump(ch, si, true); };
-$('chars').onchange = () => { prefs.set('chars', $('chars').value); if (playing) jump(ch, si, true); status($('chars').value === 'on' ? 'Character voices on.' : 'Narrator voice only.'); };
 $('style').onchange = () => { prefs.set('style', $('style').value); status($('style').value === 'story' ? 'Storyteller style: natural pauses, rhythm and timing.' : 'Plain style.'); };
 $('sleep').onchange = e => { const v = e.target.value; sleepEndCh = v === 'ch'; sleepAt = (v !== 'ch' && +v) ? Date.now() + v * 60000 : 0; status(v === '0' ? 'Sleep timer off.' : 'Sleep timer set.'); };
 $('themeBtn').onclick = () => { const r = document.documentElement, dark = getComputedStyle(r).getPropertyValue('--bg').trim() === '#121314'; r.dataset.theme = dark ? 'light' : 'dark'; prefs.set('theme', r.dataset.theme); };
@@ -1686,8 +1485,8 @@ const th = prefs.get('theme', null); if (th) document.documentElement.dataset.th
 const mobile = navigator.userAgentData ? navigator.userAgentData.mobile : /Mobi|Android|iPhone|iPad/i.test(navigator.userAgent);
 $('gpu').checked = prefs.get('gpu', false);
 $('style').value = prefs.get('style', 'story');
-$('chars').value = prefs.get('chars', 'on');
-$('piperChars').checked = prefs.get('piperChars', false);
+
+
 { const m = prefs.get('elModel', null); if (m) { if (![...$('elModel').options].some(o => o.value === m)) $('elModel').add(new Option(m, m)); $('elModel').value = m; } }
 elKeyState();
 if (prefs.get('gpu', null) === null && navigator.gpu && !mobile) { // default on only for a real (non-software) GPU
@@ -1702,7 +1501,7 @@ try { navigator.storage && navigator.storage.persist && navigator.storage.persis
 if (window.innerWidth <= 760) $('side').classList.add('hide');
 renderLib();
 // test hook (harmless): exposes internals for automated checks
-window.__abr = { NE, cutStats, get cast() { return Object.fromEntries([...cast].map(([k, r]) => [k, { ...r }])); }, parts: (c, s) => sentParts(c, s), partVoice: (c, s, i) => partVoice(sentParts(c, s)[i], engineName(), $('voice').value), styleGap, styleRate, speechText, chunkEnd: (c, s) => chunkEnd(c, s, engineName()), get state() { return { ch, si, playing, engine: engineName() }; } };
+window.__abr = { NE, cutStats, parts: (c, s) => sentParts(c, s), styleGap, styleRate, speechText, chunkEnd: (c, s) => chunkEnd(c, s, engineName()), get state() { return { ch, si, playing, engine: engineName() }; } };
 })();
 </script>
 </body>
