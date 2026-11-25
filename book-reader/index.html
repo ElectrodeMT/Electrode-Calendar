@@ -62,6 +62,10 @@ aside h2{font-size:12px;text-transform:uppercase;letter-spacing:.06em;color:var(
 .prog input{flex:1}
 label.opt{font-size:13px;color:var(--muted);display:flex;align-items:center;gap:6px}
 select{max-width:240px;border:1px solid var(--line);background:var(--panel);border-radius:8px;padding:6px}
+#setBtn{font-size:20px}
+.player.open #setBtn{background:var(--accent);color:var(--accent-ink);border-color:var(--accent)}
+@media (max-width:700px){#settings{display:none}.player.open #settings{display:flex}#setBtn{width:40px;height:40px}.ctrl{width:40px;height:40px}.player .row{gap:6px}#audioBtn .lbl{display:none}}
+@media (min-width:701px){#setBtn{display:none}}
 #status{font-size:13px;color:var(--muted);text-align:center;min-height:18px;margin-top:4px}
 .bar{height:6px;background:var(--line);border-radius:3px;overflow:hidden;max-width:520px;margin:6px auto 0}
 .bar>i{display:block;height:100%;width:0;background:var(--accent);transition:width .2s}
@@ -88,7 +92,7 @@ dialog p{margin:6px 0;font-size:14px;color:var(--muted)}
   <button class="btn" id="tocToggle" title="Chapters & library">☰</button>
   <h1 id="title">Audiobook Reader</h1>
   <button class="btn" id="shareBtn" title="Install or share this app" aria-label="Install or share this app">⤴</button>
-  <button class="btn" id="audioBtn" title="Export audio, downloads & diagnostics">⤓ Audio</button>
+  <button class="btn" id="audioBtn" title="Export audio, downloads & diagnostics" aria-label="Audio: export, downloads &amp; diagnostics">⤓<span class="lbl"> Audio</span></button>
   <button class="btn primary" id="openBtn">Open</button>
   <button class="btn" id="themeBtn" title="Toggle theme">◐</button>
   <input type="file" id="file" class="hide" accept=".txt,.md,.markdown,.html,.htm,.xhtml,.xml,.pdf,.epub,.docx,.odt,.rtf,.csv,.tsv,.json,.log,.srt,.vtt,.js,.ts,.py,.java,.c,.cpp,.cs,.go,.rb,.php,.css,.sql,.yaml,.yml,.ini,.png,.jpg,.jpeg,.webp,.bmp,.gif,.tif,.tiff,text/*,image/*">
@@ -113,8 +117,9 @@ dialog p{margin:6px 0;font-size:14px;color:var(--muted)}
     <button class="btn ctrl big primary" id="play" title="Play/Pause (Space)">▶</button>
     <button class="btn ctrl" id="fwd" title="Next sentence (→)">↻</button>
     <button class="btn ctrl" id="nextCh" title="Next chapter (Shift+→)">⏭</button>
+    <button class="btn ctrl" id="setBtn" title="Voice &amp; settings" aria-expanded="false" aria-controls="settings">⚙</button>
   </div>
-  <div class="row" style="margin-top:8px">
+  <div class="row" id="settings" style="margin-top:8px">
     <label class="opt">Engine <select id="engine">
       <option value="kokoro">Kokoro: most natural (free, ~92 MB once)</option>
       <option value="piper">Piper: fast, 30+ languages (free)</option>
@@ -1025,8 +1030,11 @@ function styleGapBase(c, s) {
   else if (endsWith(t, /(\.\.\.|…|—|–|-)$/)) g = 0.5;                            // trailing off: hold a beat
   else if (endsWith(t, /\?$/)) g = 0.4;                                          // let a question land
   else if (endsWith(t, /[.!]$/)) g = wordsIn(t) <= 5 && wordsIn(nxt) <= 6 ? 0.18 : 0.3; // staccato runs stay tight
+  else if (endsWith(t, /:$/)) g = 0.35;                                          // colon: set up what follows
+  else if (endsWith(t, /;$/)) g = 0.28;                                          // semicolon: half a full stop
   else g = 0.12;                                                                 // long sentence split mid-way: breath
-  const nxtEndsPara = pend[c].has(s + 1);
+  const nxtEndsPara = pend[c].has(s + 1), alone = para && (s === 0 || pend[c].has(s - 1));
+  if (alone && wordsIn(t) <= 8 && !/^["“'‘«]/.test(t)) g += 0.25;              // a one-line paragraph is a key line: let it land
   if (wordsIn(nxt) <= 6 && nxtEndsPara && wordsIn(t) >= 8 && !/^["“'‘]/.test(nxt)) g += 0.3; // comic/dramatic beat before a short closing line
   return g;
 }
@@ -1646,6 +1654,8 @@ window.addEventListener('unhandledrejection', e => { if (e.reason && e.reason.dr
 
 // ---------- init ----------
 { const pl = document.querySelector('.player'), setPh = () => document.documentElement.style.setProperty('--ph', pl.offsetHeight + 'px');
+  const setOpen = o => { pl.classList.toggle('open', o); $('setBtn').setAttribute('aria-expanded', o); prefs.set('settingsOpen', o); setPh(); };
+  $('setBtn').onclick = () => setOpen(!pl.classList.contains('open')); setOpen(!!prefs.get('settingsOpen', false));
   setPh(); if ('ResizeObserver' in window) new ResizeObserver(setPh).observe(pl); else addEventListener('resize', setPh); }
 $('rate').value = prefs.get('rate', 1); $('rateV').textContent = (+$('rate').value).toFixed(1) + '×';
 $('pitch').value = prefs.get('pitch', 1); $('fs').value = prefs.get('fs', 20);
