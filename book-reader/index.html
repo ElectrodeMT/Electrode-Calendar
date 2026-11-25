@@ -479,6 +479,11 @@ function splitPlain(text, name) {
 function qsa(root, base, extra) { try { return root.querySelectorAll(base + extra); } catch { return root.querySelectorAll(base); } } // :has() missing in older browsers
 function splitHtmlDoc(doc, fallback) {
   doc.querySelectorAll('script,style,noscript,nav,svg,head,template').forEach(e => e.remove());
+  // Footnotes are not read mid-text (like a narrator, who skips the little numbers and the notes block).
+  const fnSel = 'aside[epub\\:type~="footnote"],aside[epub\\:type~="endnote"],aside[epub\\:type~="rearnote"],[role="doc-footnote"],[role="doc-endnote"],[role="doc-endnotes"],section.footnotes,div.footnotes,ol.footnotes,.footnote,.endnotes';
+  try { doc.querySelectorAll(fnSel).forEach(e => e.remove()); } catch { doc.querySelectorAll('[role="doc-footnote"],[role="doc-endnote"],[role="doc-endnotes"],section.footnotes,div.footnotes,.footnote').forEach(e => e.remove()); }
+  doc.querySelectorAll('a[role="doc-noteref"],sup a[href*="#"],a.footnote-ref,a.noteref').forEach(a => { const sup = a.closest('sup'); (sup && sup.textContent.trim() === a.textContent.trim() ? sup : a).remove(); });
+  doc.querySelectorAll('a').forEach(a => { try { if (/epub:type="noteref"|noteref/.test(a.outerHTML) && /^\s*[\d*†‡]+\s*$/.test(a.textContent)) a.remove(); } catch {} });
   const body = doc.body || doc.documentElement;
   const blocks = qsa(body, 'h1,h2,h3,p,li,blockquote,pre,td,th,dd,dt,figcaption', ',div:not(:has(p,div,h1,h2,h3,li,blockquote,pre,table))');
   const out = []; let cur = { title: fallback, text: '' }; const seen = new Set();

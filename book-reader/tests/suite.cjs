@@ -307,6 +307,11 @@ add('Player', '38. Bookmarks: save the current sentence, listed in the menu, tap
   if (s.playing) await p.click('#play'); await p.click('#bms li .x'); assert(!(await p.isVisible('#bms li')), 'not removed');
   return 'save, list, persist, jump, remove';
 });
+add('Narration', '39. EPUB/HTML footnote markers and footnote text are skipped; normal links kept', async p => {
+  await open(p, 'footnotes.html'); const t = await p.evaluate(() => document.getElementById('text').innerText);
+  assert(!/tool\s?1|mind\s?2|must not be read|Smith, 2019/.test(t), 'footnote read: ' + t); assert(/normal link kept/.test(t), 'lost normal text');
+  return 'clean';
+});
 add('Offline', '30. Make available offline, then with the network blocked: app loads, opens Word/text, plays, exports MP3', async p => {
   await p.waitForFunction(() => navigator.serviceWorker.controller, null, { timeout: 15000 });
   await p.click('#audioBtn'); await p.uncheck('#offKokoro'); await p.click('#offGo');
