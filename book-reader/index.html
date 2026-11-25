@@ -1433,7 +1433,7 @@ async function makeOffline() {
     ['Sharing (QR code)', () => loadScript(LIBS.qr)],
     ['MP3 export', () => loadScript(LIBS.lame)]];
   if ($('offKokoro').checked) steps.push(['Kokoro voice model', () => NE.load('kokoro', kv)],
-    ['Narrator & character voices', async () => { await Promise.all(OFFLINE_VOICE_PARTS.map(id => fetch(VOICE_BASE_URL + id + '.bin'))); await NE.gen('kokoro', kv, 'Ready.', 0, false, 'export'); }]);
+    ['Narrator voice', async () => { await Promise.all(OFFLINE_VOICE_PARTS.map(id => fetch(VOICE_BASE_URL + id + '.bin'))); await NE.gen('kokoro', kv, 'Ready.', 0, false, 'export'); }]);
   if ($('offPiper').checked) { const pv = engineName() === 'piper' ? $('voice').value : prefs.get('voice.piper', 'en_US-hfc_female-medium'); steps.push(['Piper voice', async () => { await NE.load('piper', pv); await NE.gen('piper', pv, 'Ready.', 0, false, 'export'); }]); }
   if ($('offOcr').checked) steps.push(['Text recognition (OCR)', async () => { await loadScript(LIBS.tesseract); const w = await Tesseract.createWorker('eng'); const cv = document.createElement('canvas'); cv.width = 200; cv.height = 60; const g = cv.getContext('2d'); g.fillStyle = '#fff'; g.fillRect(0, 0, 200, 60); g.fillStyle = '#000'; g.font = '30px serif'; g.fillText('Ready', 40, 40); await w.recognize(cv); await w.terminate(); }]);
   const done = [];
