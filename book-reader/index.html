@@ -335,7 +335,7 @@ function pump() {
       const pcm = new Float32Array(r.pcm);
       post({ type: 'audio', id: j.id, pcm, sr: r.sr, ms: performance.now() - t0 }, [pcm.buffer]);
     } catch (e) { post({ type: 'error', id: j.id, message: String((e && e.message) || e) }); }
-    finally { running = false; pump(); }
+    finally { running = false; setTimeout(pump, 0); } // let waiting messages (skip / cancel / 'this first') in before the next job
   })();
 }
 self.onmessage = async ({ data: m }) => {
@@ -679,7 +679,8 @@ const NE = {
     try { this.w && this.w.terminate(); } catch {}
     this.w = null; registered.clear(); for (const [, p] of this.waits) p.reject(new Error(msg)); this.waits.clear(); this.cache.clear(); this.ready = {};
   },
-  call(msg) { const id = ++this.seq; return new Promise((resolve, reject) => { this.waits.set(id, { resolve, reject }); this.worker().postMessage({ ...msg, id }); }); },
+  call(msg) { const id = ++this.seq; return new Promise((resolve, reject) => { this.waits.set(id, { resolve, reject, type: msg.type, owner: msg.owner }); this.worker().postMessage({ ...msg, id }); }); },
+  busyWithPlayback() { const w = [...this.waits.values()].filter(x => x.type === 'gen'); return w.length > 0 && w.every(x => x.owner === 'play'); },
   onmsg(m) {
     if (m.type === 'progress') return showDl(m);
     if (m.type === 'log') return console.warn(m.msg);
@@ -937,7 +938,7 @@ function styleRate(t) {   // gentle pace shaping inside the user's chosen speed
 }
 // --- Authentic-sounding output ---
 // 1) Generate phrase groups (up to a paragraph) so intonation flows across sentences instead of resetting.
-const CHUNK_MAX = { kokoro: 300, piper: 400, eleven: 500, test: 300 };
+const CHUNK_MAX = { kokoro: 240, piper: 400, eleven: 500, test: 300 };
 function chunkEnd(c, s, e) {
   const max = CHUNK_MAX[e] || 300, v = $('voice').value, key = singleVoiceKey(c, s, e, v); let j = s, len = flat[c][s].length;
   if (key === null) return s; // a sentence mixing narration and dialogue is voiced on its own
@@ -1145,15 +1146,17 @@ async function speakCurrent() {
   });
 }
 async function speakNeural(my) {
-  const e = engineName(), v = $('voice').value, c = ch, s0 = si, j = chunkEnd(c, s0, e), text = chunkText(c, s0, j);
+  const e = engineName(), v = $('voice').value, c = ch, s0 = si, quick = (quickNext || performance.now() - lastEnded > 3000) && e !== 'eleven'; quickNext = false; // just pressed Play / jumped: start with one sentence so sound begins fast
+  const j = quick ? s0 : chunkEnd(c, s0, e), text = chunkText(c, s0, j);
   let res, waited = false, waitT = setTimeout(() => { waited = true; if (my === token) { status('Generating voice…'); stalls++; } }, 400);
   try {
     if (!NE.ready[readyKey(e, v)]) { status(`Loading ${ENGINE_NAMES[e] || e} voice…`); await NE.load(e, v); }
     if (my !== token) return;
-    prefetch(c, j);
-    res = await Promise.race([genChunk(e, v, c, s0, j, 0, true, 'play'), new Promise((_, rej) => setTimeout(() => rej(new Error('Voice generation timed out')), 120000))]);
+    const cur = genChunk(e, v, c, s0, j, 0, true, 'play'); prefetch(c, j); // ask for the words you'll hear first, then the ones after
+    res = await Promise.race([cur, new Promise((_, rej) => setTimeout(() => rej(new Error('Voice generation timed out')), 120000))]);
   } catch (err) {
-    clearTimeout(waitT); if (my !== token || err.dropped) return;
+    clearTimeout(waitT); if (my !== token) return;
+    if (err.dropped) return speakCurrent(); // it was cancelled by the skip itself: ask for it again right away
     console.warn('Voice generation failed:', err.message); failures++;
     if (/timed out/.test(err.message)) NE.reset('timeout');
     if (err.fatal || failures >= 3 || !NE.ready[readyKey(e, v)]) {
@@ -1164,7 +1167,7 @@ async function speakNeural(my) {
     si = j + 1; return speakCurrent();
   }
   const stalled = waited; clearTimeout(waitT); if (my !== token || !playing) return;
-  if (stalled && e !== 'eleven') { // the device is slower than playback: gather ~25 s of audio first, then read without stopping
+  if (stalled && !quick && e !== 'eleven') { // the device is slower than playback: gather ~25 s of audio first, then read without stopping
     status('Preparing the next part so it plays smoothly…'); let have = res.pcm.length / res.sr, pj = j;
     for (let n = 0; n < 12 && have < 25; n++) {
       const np = nextPos(c, pj); if (!np || np[0] !== c || !speakable(flat[c][np[1]])) break;
@@ -1192,7 +1195,8 @@ async function speakNeural(my) {
   try { await audio.play(); } catch (err) { if (my === token) { pause('Tap Play to start audio (your browser blocked autoplay).'); } }
 }
 function concat(parts) { const n = parts.reduce((a, p) => a + p.length, 0), o = new Float32Array(n); let k = 0; for (const p of parts) { o.set(p, k); k += p.length; } return o; }
-audio.addEventListener('ended', () => { if (!audioFor || audioFor.my !== token || !playing) return; si = audioFor.j + 1; speakCurrent(); });
+let lastEnded = -1e9, quickNext = false;
+audio.addEventListener('ended', () => { lastEnded = performance.now(); if (!audioFor || audioFor.my !== token || !playing) return; si = audioFor.j + 1; speakCurrent(); });
 audio.addEventListener('timeupdate', () => { // move the highlight sentence by sentence inside a phrase group
   const a = audioFor; if (!a || a.my !== token || !a.starts || ch !== a.ch) return;
   let k = 0; while (k + 1 < a.starts.length && a.starts[k + 1] <= audio.currentTime + 0.05) k++;
@@ -1241,7 +1245,8 @@ function jump(c, s, resume = playing) {
   if (!book) return; token++; if (synth) synth.cancel(); stopAudio(); audioFor = null;
   const changed = c !== ch; ch = Math.max(0, Math.min(c, flat.length - 1)); si = Math.max(0, Math.min(s, flat[ch].length - 1));
   if (changed) renderChapter(); else highlight(true); save();
-  if (isNeural()) NE.clear();
+  if (isNeural()) { if (engineName() === 'kokoro' && NE.busyWithPlayback()) NE.reset('skip'); else NE.clear(); } // restarting (~1 s) beats waiting for unwanted audio
+  quickNext = true;
   if (resume) { playing = true; setPlayBtn(); speakCurrent(); }
 }
 function step(d) {
