@@ -835,7 +835,7 @@ const speakable = t => /[\p{L}\p{N}]/u.test(t);
 function resample(x, from, to) { if (from === to) return x; const n = Math.round(x.length * to / from), o = new Float32Array(n), r = from / to; for (let i = 0; i < n; i++) { const t = i * r, k = Math.floor(t), f = t - k; o[i] = (x[k] || 0) * (1 - f) + (x[k + 1] || 0) * f; } return o; }
 const sentParts = (c, s) => [{ t: flat[c][s], who: '' }];
 const singleVoiceKey = (c, s, e, v) => v + '|' + (storyMode() ? emoOf(c, s).key : '');
-const DEEPEN = { am_narrator_v1: 1.2 }; // semitones lower: a bigger, richer chest voice for the narrator
+const DEEPEN = {}; // no artificial pitch lowering: it made the voice sound robotic
 const NARR_SPEED = 1.05; // words at ~180 wpm; with natural pauses the overall pace lands at ~150-160 wpm like professional narrators
 async function genChunk(e, v, c, s, j, pri, cache, owner) {
   const em = storyMode() ? emoOf(c, s) : EMO_NONE, p = em.p;
@@ -852,12 +852,12 @@ async function genChunk(e, v, c, s, j, pri, cache, owner) {
 // softer, longer pauses; excited = quicker, brighter, louder, tighter pauses; sarcastic = a dry, slightly lifted
 // delivery with a beat before the punchline; awe = hushed, slow, spacious; serious = lower, deliberate, weighty.
 // Moods carry over gently from sentence to sentence, so the voice never jumps.
-const EMO_PROFILES = { //   rate  pitch(st) gain(dB) pause  voice colour
-  sad:       { rate: 0.85, pitch: -1.2, gain: -3.0, pause: 1.45, mix: null },
-  excited:   { rate: 1.12, pitch: 1.3,  gain: 2.5,  pause: 0.75, mix: ['am_puck', 35] },
-  sarcastic: { rate: 0.93, pitch: 0.7,  gain: 0,    pause: 1.3,  mix: ['am_puck', 20] },
-  awe:       { rate: 0.84, pitch: -0.6, gain: -2.5, pause: 1.5,  mix: null },
-  serious:   { rate: 0.92, pitch: -1.0, gain: 1.0,  pause: 1.2,  mix: ['am_onyx', 30] }
+const EMO_PROFILES = { // pace, loudness, pauses and a gentle natural voice colour only: pitch shifting sounded robotic
+  sad:       { rate: 0.9,  pitch: 0, gain: -2.5, pause: 1.4,  mix: null },
+  excited:   { rate: 1.1,  pitch: 0, gain: 2.0,  pause: 0.8,  mix: ['am_puck', 25] },
+  sarcastic: { rate: 0.95, pitch: 0, gain: 0,    pause: 1.3,  mix: ['am_puck', 15] },
+  awe:       { rate: 0.9,  pitch: 0, gain: -2.0, pause: 1.45, mix: null },
+  serious:   { rate: 0.95, pitch: 0, gain: 0.8,  pause: 1.2,  mix: null }
 };
 const EMO_NONE = { key: '', mood: '', level: 0, p: { rate: 1, pitch: 0, gain: 0, pause: 1, mix: null } };
 const EMO_WORDS = {
